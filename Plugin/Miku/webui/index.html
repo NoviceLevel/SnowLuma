@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <link rel="icon" type="image/x-icon" href="/static/favicon.ico?v=20260810-1">
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico?v=20260810-2">
   <title>Miku QQ 宠物</title>
   <link rel="stylesheet" href="/static/app.css?v=20260809-7">
   <link rel="stylesheet" href="/static/attributes.css?v=20260808-1">
@@ -38,10 +38,10 @@
       <article class="panel span2">
         <div class="title">
           <div class="actions" style="margin-top:0"><h2 style="margin:0">自动托管</h2><span id="automation" class="pill">已停止</span></div>
-          <button id="start" class="small success">启动</button><button id="stop" hidden></button>
+          <button id="start" class="small success" type="button">启动</button><button id="stop" hidden></button>
         </div>
         <span id="activity" hidden></span>
-        <button id="refresh" hidden></button><button id="once" hidden></button>
+        <div class="actions"><button id="refresh" class="small" type="button">刷新状态</button><button id="once" class="small" type="button">执行一轮</button></div>
         <div id="error" class="error hidden"></div>
       </article>
 
@@ -73,6 +73,9 @@
         <div class="title settings-title"><div><h2>托管设置</h2><p>配置保存在 Miku 独立组件中</p></div><button id="save">保存设置</button></div>
         <form id="settings">
           <fieldset><legend>安全与轮询</legend>
+            <label class="check"><input name="safeMode" type="checkbox">安全模式（只读）</label>
+            <label class="check"><input name="autoStart" type="checkbox">启动时自动托管</label>
+            <label>Pet ID<input name="petId" type="text" placeholder="AUTO 表示自动获取"></label>
             <label>页面与后端刷新秒数<input name="intervalSeconds" type="number" min="3" max="300"><small>页面轮询与后端检查使用同一周期</small></label>
             <label>学习金币阈值<input name="coinThreshold" type="number" min="0"></label>
             <label>任务优先顺序<select name="taskPriority"><option value="school">优先学习</option><option value="work">优先打工</option></select><small>金币不足时自动改为打工</small></label>

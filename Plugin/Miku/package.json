@@ -1,12 +1,15 @@
 {
   "name": "miku-qqpet",
-  "version": "0.1.0",
+  "version": "1.1.3",
   "type": "module",
   "main": "index.mjs",
   "description": "Miku QQ 宠物组件，通过 SnowLuma OneBot HTTP 运行",
   "author": "qq-pet-interface-copilot contributors",
   "license": "MIT",
-  "buildId": "miku-qqpet-0.1.0-win-x64",
+  "buildId": "miku-qqpet-1.1.3-win-x64",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
   "engines": {
     "node": ">=22.13.0"
   }

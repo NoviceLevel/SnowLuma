@@ -27,7 +27,7 @@ let careerSignature='';
 const baseDocumentTitle='Miku QQ 宠物';
 
 async function request(path,method='GET',body){
-  const token=localStorage.getItem('token')||'';
+  const token=window.__QQPET_API_TOKEN__||'';
   const headers=body?{'Content-Type':'application/json'}:{};
   if(token)headers.Authorization=`Bearer ${token}`;
   const response=await fetch(API+path,{method,credentials:'same-origin',headers,body:body?JSON.stringify(body):undefined});
@@ -324,7 +324,12 @@ async function loadCatalogs(silent=false){
     if(!silent)toast(`已刷新目录：${data.courses?.length||0} 门课程，${jobs.length} 个岗位`);
   }catch(error){if(!silent)showError(error.message)}finally{catalogsLoading=false}
 }
-$('start').onclick=()=>act(automationRunning?'/automation/stop':'/automation/start',automationRunning?'自动托管已停止':'自动托管已启动');
+$('start').onclick=()=>{
+  if(!automationRunning&&!latestConfig.safeMode&&!window.confirm('当前将允许自动托管发送写请求，确认启动？'))return;
+  void act(automationRunning?'/automation/stop':'/automation/start',automationRunning?'自动托管已停止':'自动托管已启动');
+};
+$('refresh').onclick=()=>void act('/refresh','状态已刷新');
+$('once').onclick=()=>{if(window.confirm('执行一轮自动化检查？安全模式下不会发送写请求。'))void act('/run-once','本轮执行完成')};
 $('account-visibility').onclick=()=>{accountVisible=!accountVisible;renderAccount(latestState.account)};
 form.elements.courseSubEvent.addEventListener('change',renderAssetPanels);
 form.elements.workJobSubEvent.addEventListener('change',renderAssetPanels);

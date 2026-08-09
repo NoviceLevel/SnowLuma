@@ -3,12 +3,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import http from "node:http";
 const DEFAULT_CONFIG_VALUES = {
   enabled: true,
-  autoStart: true,
-  safeMode: false,
+  autoStart: false,
+  safeMode: true,
   petId: "AUTO",
   intervalSeconds: 15,
   statusRefreshSeconds: 15,
@@ -139,6 +140,34 @@ function createDailyProgress() {
     dailyExperienceGain: 0
   };
 }
+function writeJsonAtomically(filePath, value) {
+  const tempPath = `${filePath}.${process.pid}.tmp`;
+  const body = JSON.stringify(value, null, 2) + "\n";
+  try {
+    fs.writeFileSync(tempPath, body, "utf8");
+    try {
+      fs.renameSync(tempPath, filePath);
+    } catch (error) {
+      if (!error || !["EEXIST", "EPERM"].includes(error.code)) {
+        throw error;
+      }
+      fs.rmSync(filePath, { force: true });
+      fs.renameSync(tempPath, filePath);
+    }
+  } finally {
+    fs.rmSync(tempPath, { force: true });
+  }
+}
+function backupCorruptFile(filePath, error) {
+  if (error?.code === "ENOENT") {
+    return;
+  }
+  try {
+    fs.copyFileSync(filePath, `${filePath}.corrupt-${Date.now()}`);
+  } catch {
+    // Preserve the original error path even when the backup cannot be made.
+  }
+}
 class ProgressStore {
   constructor(arg12) {
     const value8 = {
@@ -176,7 +205,8 @@ class ProgressStore {
         } : null,
         dailyExperienceGain: Math.max(0, Math.trunc(Number(value6.dailyExperienceGain) || 0))
       };
-    } catch {
+    } catch (error) {
+      backupCorruptFile(arg12, error);
       this.state = createDailyProgress();
     }
     this.rollover();
@@ -184,7 +214,7 @@ class ProgressStore {
   }
   state;
   save() {
-    fs.writeFileSync(this.filePath, JSON.stringify(this.state, null, 2) + "\n", "utf8");
+    writeJsonAtomically(this.filePath, this.state);
   }
   rollover(arg13 = currentDateKey()) {
     if (this.state.date === arg13) {
@@ -1289,6 +1319,7 @@ class AutomationController {
   busy = false;
   active = false;
   generation = 0;
+  failureStreak = 0;
   petName = "";
   identityLoaded = false;
   medals = null;
@@ -1330,14 +1361,32 @@ class AutomationController {
       return false;
     }
   }
+  async stopAndWait(timeoutMs = 30000) {
+    this.stop();
+    const deadline = Date.now() + Math.max(1000, timeoutMs);
+    while (this.busy && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    if (this.busy) {
+      this.host.log("等待当前请求结束超时，正在继续关闭");
+      return false;
+    }
+    return true;
+  }
   async loop(arg175) {
     if (!this.active || arg175 !== this.generation) {
       return;
     }
+    let nextDelay;
     try {
       await this.runOnce();
+      this.failureStreak = 0;
+      nextDelay = Math.max(3, this.host.getConfig().intervalSeconds) * 1000;
     } catch (error5) {
       const value192 = error5 instanceof Error ? error5.message : String(error5);
+      this.failureStreak += 1;
+      const intervalMs = Math.max(3, this.host.getConfig().intervalSeconds) * 1000;
+      nextDelay = Math.min(300000, intervalMs * (2 ** Math.min(6, this.failureStreak - 1)));
       this.host.log("本轮失败：" + value192);
       this.host.updateStatus({
         connected: false,
@@ -1348,11 +1397,10 @@ class AutomationController {
     if (!this.active || arg175 !== this.generation) {
       return;
     }
-    const value193 = Math.max(3, this.host.getConfig().intervalSeconds);
     this.timer = setTimeout(() => {
       this.timer = null;
       this.loop(arg175);
-    }, value193 * 1000);
+    }, nextDelay);
   }
   async client() {
     const target4 = this.host.getConfig();
@@ -1774,6 +1822,11 @@ class AutomationController {
     }
   }
   async catalogs() {
+    if (this.busy) {
+      throw new QQPetError("当前已有请求执行中，请稍后再试");
+    }
+    this.busy = true;
+    try {
     const value247 = await this.client();
     const [value248, value249, value250, value251] = await Promise.all([value247.querySchoolStage(), value247.queryWorkOverview(), value247.queryAdventureOptions(), value247.queryBathItems()]);
     const [value252, value253] = await Promise.all([value247.querySchoolCourses(value248), Promise.all(value249.careers.map(async item39 => {
@@ -1807,6 +1860,9 @@ class AutomationController {
       bathItems: value251
     };
     return value255;
+    } finally {
+      this.busy = false;
+    }
   }
   async runOnce() {
     if (this.busy) {
@@ -2034,8 +2090,8 @@ class QQPetPlugin {
       this.scheduler.start();
     }
   }
-  cleanup() {
-    this.scheduler?.stop();
+  async cleanup() {
+    await this.scheduler?.stopAndWait();
     this.scheduler = null;
     this.saveConfig();
     this.context = null;
@@ -2043,7 +2099,8 @@ class QQPetPlugin {
   loadConfig() {
     try {
       this.configValue = normalizeConfig(JSON.parse(fs.readFileSync(this.ctx.configPath, "utf8")));
-    } catch {
+    } catch (error) {
+      backupCorruptFile(this.ctx.configPath, error);
       const value275 = {
         ...DEFAULT_CONFIG
       };
@@ -2057,7 +2114,7 @@ class QQPetPlugin {
     };
     if (this.context) {
       fs.mkdirSync(path.dirname(this.context.configPath), value276);
-      fs.writeFileSync(this.context.configPath, JSON.stringify(this.configValue, null, 2) + "\n", "utf8");
+      writeJsonAtomically(this.context.configPath, this.configValue);
     }
   }
   updateConfig(arg192) {
@@ -2400,12 +2457,42 @@ function serveStaticFile(response, filePath) {
   });
   fs.createReadStream(filePath).pipe(response);
 }
-function renderIndexHtml(webuiPath, runtimeName) {
+function isWithinPath(childPath, parentPath) {
+  return childPath === parentPath || childPath.startsWith(parentPath + path.sep);
+}
+function resolveStaticAssetPath(webuiPath, assetPath) {
+  const rootPath = fs.realpathSync(webuiPath);
+  const candidatePath = path.resolve(rootPath, assetPath);
+  if (!isWithinPath(candidatePath, rootPath)) {
+    return null;
+  }
+  try {
+    const realPath = fs.realpathSync(candidatePath);
+    return isWithinPath(realPath, rootPath) ? realPath : null;
+  } catch {
+    return candidatePath;
+  }
+}
+function createApiToken() {
+  return randomBytes(32).toString("base64url");
+}
+function isAuthorizedRequest(request, expectedToken) {
+  const authorization = request.headers.authorization ?? "";
+  const prefix = "Bearer ";
+  if (!expectedToken || !authorization.startsWith(prefix)) {
+    return false;
+  }
+  const actual = Buffer.from(authorization.slice(prefix.length));
+  const expected = Buffer.from(expectedToken);
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+function renderIndexHtml(webuiPath, runtimeName, apiToken) {
   const appMtime = Math.trunc(fs.statSync(path.join(webuiPath, "app.js")).mtimeMs);
-  return fs.readFileSync(path.join(webuiPath, "index.html"), "utf8").replace("ONEBOT · QQ PET", runtimeName.toUpperCase() + " · QQ PET").replace("正在连接 OneBot…", "正在连接 " + runtimeName + "…").replace(/<script type="module" src="\/static\/app\.js[^"]*/, "<script>window.__QQPET_API_BASE__=\"/api\";</script>\n  <script type=\"module\" src=\"/static/app.js?v=" + appMtime);
+  const tokenScript = `<script>window.__QQPET_API_BASE__="/api";window.__QQPET_API_TOKEN__=${JSON.stringify(apiToken)};</script>`;
+  return fs.readFileSync(path.join(webuiPath, "index.html"), "utf8").replace("ONEBOT · QQ PET", runtimeName.toUpperCase() + " · QQ PET").replace("正在连接 OneBot…", "正在连接 " + runtimeName + "…").replace(/<script type="module" src="\/static\/app\.js[^"]*/, tokenScript + "\n  <script type=\"module\" src=\"/static/app.js?v=" + appMtime);
 }
 function createWebServer(plugin, options) {
-  const indexHtml = renderIndexHtml(options.webuiPath, options.runtimeName);
+  const indexHtml = renderIndexHtml(options.webuiPath, options.runtimeName, options.apiToken);
   return http.createServer(async (request, response) => {
     const method = request.method ?? "GET";
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -2417,6 +2504,13 @@ function createWebServer(plugin, options) {
           uin: options.uin
         };
         sendJson(response, 200, value301);
+        return;
+      }
+      if (url.pathname.startsWith("/api/") && !isAuthorizedRequest(request, options.apiToken)) {
+        sendJson(response, 401, {
+          code: -1,
+          message: "未授权的 API 请求"
+        });
         return;
       }
       if (method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
@@ -2431,8 +2525,16 @@ function createWebServer(plugin, options) {
         return;
       }
       if (method === "GET" && url.pathname.startsWith("/static/")) {
-        const assetPath = decodeURIComponent(url.pathname.slice(8));
-        if (!assetPath || assetPath.includes("\0") || assetPath.split("/").includes("..")) {
+        let assetPath;
+        try {
+          assetPath = decodeURIComponent(url.pathname.slice(8));
+        } catch {
+          assetPath = "";
+        }
+        const resolvedAssetPath = assetPath && !assetPath.includes("\0") && !assetPath.includes("\\")
+          ? resolveStaticAssetPath(options.webuiPath, assetPath)
+          : null;
+        if (!resolvedAssetPath) {
           const value302 = {
             code: -1,
             message: "静态文件路径无效"
@@ -2440,7 +2542,7 @@ function createWebServer(plugin, options) {
           sendJson(response, 400, value302);
           return;
         }
-        serveStaticFile(response, path.join(options.webuiPath, assetPath));
+        serveStaticFile(response, resolvedAssetPath);
         return;
       }
       if (method === "GET" && url.pathname === "/api/status") {
@@ -2475,6 +2577,13 @@ function createWebServer(plugin, options) {
       }
       if (method === "POST" && url.pathname === "/api/run-once") {
         const value303 = await plugin.scheduler?.runOnce();
+        if (value303 === null) {
+          sendJson(response, 409, {
+            code: -1,
+            message: "当前已有请求执行中，请稍后再试"
+          });
+          return;
+        }
         sendJson(response, 200, {
           code: 0,
           data: {
@@ -2494,10 +2603,11 @@ function createWebServer(plugin, options) {
         return;
       }
       if (method === "POST" && url.pathname === "/api/automation/stop") {
+        const changed = await plugin.scheduler?.stopAndWait() ?? false;
         sendJson(response, 200, {
           code: 0,
           data: {
-            changed: plugin.scheduler?.stop() ?? false
+            changed: changed
           }
         });
         return;
@@ -2564,7 +2674,7 @@ async function main() {
   if (!/^\d{5,20}$/.test(uin)) {
     throw new Error(runtime.runtimeName + " 未返回有效的当前 QQ 号");
   }
-  const dataRoot = process.env.QQPET_DATA_DIR?.trim() ? path.resolve(process.env.QQPET_DATA_DIR) : path.join(os.homedir(), ".qqpet-onebot");
+  const dataRoot = process.env.QQPET_DATA_DIR?.trim() ? path.resolve(process.env.QQPET_DATA_DIR) : path.join(os.homedir(), ".qqpet-miku");
   const accountDataDir = path.join(dataRoot, runtime.kind, uin);
   const value307 = {
     recursive: true
@@ -2591,15 +2701,17 @@ async function main() {
   const plugin = new QQPetPlugin(runtime.runtimeName);
   await plugin.init(pluginContext);
   const webHost = normalizeWebHost(process.env.QQPET_WEB_HOST || "127.0.0.1");
-  const webPort = parsePort("QQPET_WEB_PORT", 8090, isDesktopMode());
+  const webPort = parsePort("QQPET_WEB_PORT", 8091, isDesktopMode());
   const webuiPath = path.join(pluginDir, "webui");
+  const apiToken = createApiToken();
   const server = createWebServer(plugin, {
     host: webHost,
     port: webPort,
     webuiPath: webuiPath,
     runtimeName: runtime.runtimeName,
     runtimeKind: runtime.kind,
-    uin: uin
+    uin: uin,
+    apiToken: apiToken
   });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -2633,7 +2745,7 @@ async function main() {
     if (!stopping) {
       stopping = true;
       sendDesktopEvent(value306);
-      plugin.cleanup();
+      await plugin.cleanup();
       await new Promise(resolve3 => server.close(() => resolve3()));
       sendDesktopEvent({
         type: "stopped",
@@ -2661,8 +2773,21 @@ async function main() {
     shutdown().then(() => process.exit(0));
   });
 }
-main().catch(error => {
-  const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write("OneBot QQ 宠物启动失败：" + message + "\n");
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch(error => {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write("OneBot QQ 宠物启动失败：" + message + "\n");
+    process.exitCode = 1;
+  });
+}
+export {
+  AutomationController,
+  DEFAULT_CONFIG,
+  ProgressStore,
+  QQPetPlugin,
+  createApiToken,
+  createWebServer,
+  normalizeConfig,
+  resolveStaticAssetPath,
+  writeJsonAtomically
+};

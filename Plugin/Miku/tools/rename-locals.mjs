@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 
-const inputPath = path.resolve(process.argv[2] ?? "src/deobfuscated.js");
+const inputPath = path.resolve(process.argv[2] ?? "index.mjs");
 const outputPath = path.resolve(process.argv[3] ?? inputPath);
 const npxCache = path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData/Local"), "npm-cache", "_npx");
 const webcrackPackage = fs.readdirSync(npxCache, { withFileTypes: true })

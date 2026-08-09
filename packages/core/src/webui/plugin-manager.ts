@@ -262,11 +262,28 @@ export class PluginManager {
   }
 
   private configAccounts(): Array<{ uin: string; index: number }> {
+    const isValidPort = (value: unknown): boolean => {
+      const port = Number(value);
+      return Number.isSafeInteger(port) && port >= 1 && port <= 65535;
+    };
     try {
       const configDir = path.resolve(this.root, '..', 'config');
       const accounts = readdirSync(configDir)
-        .map((name) => name.match(/^onebot_(\d+)\.json$/)?.[1])
-        .filter((uin): uin is string => Boolean(uin))
+        .flatMap((name) => {
+          const uin = name.match(/^onebot_(\d+)\.json$/)?.[1];
+          if (!uin) return [];
+          try {
+            const raw = JSON.parse(readFileSync(path.join(configDir, name), 'utf8')) as {
+              networks?: { httpServers?: Array<{ enabled?: boolean; port?: number }> };
+            };
+            const hasEnabledHttp = raw.networks?.httpServers?.some((server) => (
+              server?.enabled !== false && isValidPort(server?.port)
+            ));
+            return hasEnabledHttp ? [uin] : [];
+          } catch {
+            return [];
+          }
+        })
         .sort((a, b) => a.localeCompare(b));
       const primary = readEnvValue(path.join(this.root, 'Miku', 'config.env'), 'QQPET_BOT_UIN');
       if (primary && accounts.includes(primary)) {

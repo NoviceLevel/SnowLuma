@@ -13,8 +13,8 @@ NapCat 插件，也不包含 NapCat、SnowLuma 或 QQ。
 `QQPetHelper.exe` 不显示命令行窗口。关闭浏览器不会停止自动托管，只有从托盘菜单选择
 “退出”才会结束后台服务。`start.bat` 作为故障排查备用入口，会显示运行日志。
 
-程序默认调用 `get_version_info` 自动识别 NapCat/SnowLuma。首次启动后请先核对当前 QQ、
-宠物昵称和状态，再根据页面提示完成初始化并启动自动托管。
+程序默认调用 `get_version_info` 自动识别 NapCat/SnowLuma。首次启动默认不会自动托管，
+且处于安全模式；请先核对当前 QQ、宠物昵称和状态，再在页面关闭安全模式并启动自动托管。
 
 ## 修改 OneBot 地址或令牌
 
@@ -51,7 +51,7 @@ OneBot HTTP 端口和 Token，并使用独立的动态 Web 端口启动 QQPet。
 ## 更新
 
 停止旧程序，解压新版到新目录。需要保留设置时，不要删除用户主目录下的
-`.qqpet-onebot` 数据目录；如果配置过 `QQPET_DATA_DIR`，则保留该目录。
+`.qqpet-miku` 数据目录；如果配置过 `QQPET_DATA_DIR`，则保留该目录。
 
 ## 安全提示
 
