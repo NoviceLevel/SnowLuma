@@ -22,6 +22,7 @@ import {
   type StrangerStatus,
 } from './apis/extras';
 import type { BridgeInterface } from './bridge-interface';
+import { normalizeBridgeErrorMessage } from './error-messages';
 
 const log = createLogger('Bridge');
 const runtimeLog = createLogger('Bridge.Runtime');
@@ -315,7 +316,8 @@ export class Bridge implements BridgeInterface {
       // shows exactly where the chain broke.
       log.warn('packet %s failed: code=%d gotResponse=%s %s (uin=%s, %dB, %dms)',
         serviceCmd, result.errorCode, result.gotResponse,
-        result.errorMessage ?? '', this.identity.uin, body.length, elapsed);
+        normalizeBridgeErrorMessage(serviceCmd, result.errorCode, result.errorMessage),
+        this.identity.uin, body.length, elapsed);
     } else {
       // Happy path — memory-only trace so the full chain shows under the
       // request's [req#N] when debugging, without flooding disk.

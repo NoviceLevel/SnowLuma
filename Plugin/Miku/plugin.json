@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "miku",
+  "name": "Miku",
+  "displayName": "Miku QQ 宠物",
+  "version": "0.1.0",
+  "entry": "multi.mjs",
+  "launcher": "start.bat",
+  "runtime": "node",
+  "protocol": "onebot-http-v11",
+  "multiAccount": true,
+  "authorizationRequired": false,
+  "webui": {
+    "host": "127.0.0.1",
+    "defaultPort": 8091,
+    "multiAccount": true
+  }
+}

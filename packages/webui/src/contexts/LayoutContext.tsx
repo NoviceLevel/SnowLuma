@@ -16,6 +16,7 @@ import type { UiLayout, UiLayoutItem, UiPages } from '@/types';
 const DEFAULT_NAV_ITEMS: UiLayoutItem[] = [
   { id: '/', visible: true },
   { id: '/processes', visible: true },
+  { id: '/plugins', visible: true },
   { id: '/config', visible: true },
   { id: '/logs', visible: true },
   { id: '/settings', visible: true },

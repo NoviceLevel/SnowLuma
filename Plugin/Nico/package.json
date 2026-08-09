@@ -1,0 +1,13 @@
+{
+  "name": "nico-qqpet",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "index.mjs",
+  "description": "Nico QQ 宠物组件，通过 SnowLuma OneBot HTTP 运行",
+  "author": "qq-pet-interface-copilot contributors",
+  "license": "MIT",
+  "buildId": "nico-qqpet-0.1.0-win-x64",
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}

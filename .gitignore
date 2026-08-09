@@ -16,6 +16,15 @@ dist/
 **/data/
 logs/
 
+# Local reverse-engineering scratch files belong under Plugin/Miku, not at the
+# repository root. Keep accidental root copies out of commits.
+/config.env
+/deobfuscated.js
+/index.obfuscated.mjs
+/index.readable-pre-local-renames.mjs
+/rename-locals.mjs
+/rename-top-level.mjs
+
 # macOS metadata
 .DS_Store
 

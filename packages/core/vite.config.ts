@@ -35,6 +35,22 @@ const nodeModules = [...builtinModules, ...builtinModules.map((m) => `node:${m}`
 
 const runtimeSrc = toPosix(runtimeDir);
 const nativeSrc = toPosix(nativeDir);
+const pluginsSrc = path.resolve(repoRoot, 'Plugin');
+
+const copyPluginsPlugin: PluginOption = {
+  name: 'copy-private-plugins',
+  writeBundle() {
+    if (!fs.existsSync(pluginsSrc)) return;
+    fs.cpSync(pluginsSrc, path.join(distDir, 'Plugin'), {
+      recursive: true,
+      force: true,
+      filter: (source) => {
+        const relative = path.relative(pluginsSrc, source);
+        return !/(^|[\\/])(data|data-local-rename-test|data-readable-test|node_modules)([\\/]|$)/i.test(relative);
+      },
+    });
+  },
+};
 
 // Target selection: `SNOWLUMA_TARGET=<platform>-<arch>` overrides the host
 // detection, enabling cross-target packaging on CI.
@@ -105,6 +121,7 @@ const BaseConfigPlugin: PluginOption[] = [
   // before `cp` so the transform runs on every source file Vite asks
   // for, regardless of where `cp` later copies emitted assets.
   protobufVitePlugin(),
+  copyPluginsPlugin,
   cp({
     targets: [
       ...runtimeDistFiles.map((file) => ({

@@ -1,0 +1,13 @@
+.metrics .attribute {
+  --metric-accent: #775fe7;
+  background: linear-gradient(145deg, #fbfaff, #f5f2ff);
+}
+.metrics .attribute strong { color: #5d49c8; }
+.metrics .profile-metric {
+  --metric-accent: #36a77a;
+  background: linear-gradient(145deg, #fbfffd, #f0faf6);
+}
+.profile-metric small { display: block; margin-top: 2px; color: #777085; font-size: 9px; line-height: 1.2; }
+.state-good { color: #147a4c; }
+.state-bad { color: #c33e3e; }
+.state-unknown { color: #8a7b58; }

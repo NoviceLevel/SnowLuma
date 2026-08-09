@@ -1,4 +1,4 @@
-import type { AccountConnections, BackupBundle, BackupImportResult, DebugActionDoc, DebugInvokeResult, DebugStreamMessage, GlobalSettings, HookProcessInfo, LogEntry, LogLevel, LogStorageSettingsPatch, NotificationDeliveryRecord, NotificationsConfig, QQInfo, StorageCleanupRequest, StorageCleanupResponse, StorageOverviewResponse, StorageSettingsUpdateResponse, SystemInfo, SystemSettingsPatch, SystemSettingsResponse, UiAppearance, UiConfig, UpdateInfo } from '@/types';
+import type { AccountConnections, BackupBundle, BackupImportResult, DebugActionDoc, DebugInvokeResult, DebugStreamMessage, GlobalSettings, HookProcessInfo, LogEntry, LogLevel, LogStorageSettingsPatch, NotificationDeliveryRecord, NotificationsConfig, PluginState, QQInfo, StorageCleanupRequest, StorageCleanupResponse, StorageOverviewResponse, StorageSettingsUpdateResponse, SystemInfo, SystemSettingsPatch, SystemSettingsResponse, UiAppearance, UiConfig, UpdateInfo } from '@/types';
 import type { PasswordRule } from '@/components/pages/change-password-form';
 import { normalizeOneBotConfig } from '@/lib/onebot-config';
 import {
@@ -52,6 +52,7 @@ class HttpApiClient implements ApiClient {
 
   // namespaced surfaces are bound up-front so callers can destructure
   readonly processes: ApiClient['processes'];
+  readonly plugins: ApiClient['plugins'];
   readonly config: ApiClient['config'];
   readonly logs: ApiClient['logs'];
   readonly update: ApiClient['update'];
@@ -77,6 +78,20 @@ class HttpApiClient implements ApiClient {
         `/api/processes/${pid}/probe-login`,
         { signal },
       ).then((d) => d.info ?? null),
+    };
+
+    const pluginAction = (id: string, action: 'start' | 'stop' | 'restart') =>
+      this.postJson<{ plugin: PluginState }>(`/api/plugins/${encodeURIComponent(id)}/${action}`)
+        .then((data) => data.plugin);
+    this.plugins = {
+      list: () => this.getJson<{ list: PluginState[] }>('/api/plugins').then((data) => data.list ?? []),
+      setEnabled: (id, enabled) => this.fetchJson<{ plugin: PluginState }>(`/api/plugins/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled }),
+      }).then((data) => data.plugin),
+      start: (id) => pluginAction(id, 'start'),
+      stop: (id) => pluginAction(id, 'stop'),
+      restart: (id) => pluginAction(id, 'restart'),
     };
 
     this.config = {

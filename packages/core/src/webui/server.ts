@@ -84,6 +84,7 @@ import type { NotificationManager } from '../notifications/manager';
 import { StorageManagementService } from './storage-management';
 import { registerStorageRoutes } from './storage-routes';
 import { LogStorageSettingsManager } from './storage-settings';
+import { PluginManager } from './plugin-manager';
 import {
   clearAvatarSessionCookie,
   extractBearerToken,
@@ -535,6 +536,7 @@ export async function initWebUI(
   }
 
   const app = new Hono();
+  const pluginManager = new PluginManager();
   app.use('*', webuiSecurityHeaders);
   registerLoginRequestSecurity(app);
   const storageManagement = new StorageManagementService({
@@ -1236,6 +1238,49 @@ export async function initWebUI(
     ch.send({ type: 'ready' });
     ch.onClose(subscribeLogs((entry) => ch.send(entry)));
   }));
+
+  app.get('/api/plugins', async (c) => {
+    try {
+      return c.json({ list: await pluginManager.list() });
+    } catch (error) {
+      return c.json({ list: [], message: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
+  function pluginAction(action: 'start' | 'stop' | 'restart') {
+    return async (c: Context) => {
+      const id = c.req.param('id');
+      try {
+        const plugin = await pluginManager[action](id ?? '');
+        log.info('plugin action=%s id=%s state=%s pid=%s', action, id, plugin.state, String(plugin.pid));
+        return c.json({ success: true, plugin });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        log.warn('plugin action=%s id=%s failed: %s', action, id, message);
+        return c.json({ success: false, message }, 400);
+      }
+    };
+  }
+
+  app.post('/api/plugins/:id/start', pluginAction('start'));
+  app.post('/api/plugins/:id/stop', pluginAction('stop'));
+  app.post('/api/plugins/:id/restart', pluginAction('restart'));
+  app.patch('/api/plugins/:id', async (c) => {
+    const id = c.req.param('id');
+    const body = await c.req.json().catch(() => null) as { enabled?: unknown } | null;
+    if (typeof body?.enabled !== 'boolean') {
+      return c.json({ success: false, message: 'enabled 必须是布尔值' }, 400);
+    }
+    try {
+      const plugin = await pluginManager.setEnabled(id ?? '', body.enabled);
+      log.info('plugin enabled=%s id=%s state=%s', String(body.enabled), id, plugin.state);
+      return c.json({ success: true, plugin });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log.warn('plugin enabled=%s id=%s failed: %s', String(body.enabled), id, message);
+      return c.json({ success: false, message }, 400);
+    }
+  });
 
   app.get('/api/processes', async (c) => {
     if (!hookManager) return c.json({ list: [] });

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Miku QQ 宠物</title>
+  <link rel="stylesheet" href="/static/app.css?v=20260809-7">
+  <link rel="stylesheet" href="/static/attributes.css?v=20260808-1">
+</head>
+<body>
+  <main>
+    <header class="hero">
+      <button id="pet-portrait" class="pet-portrait" type="button" aria-label="查看宠物高清立绘">
+        <img id="personality-art" class="personality-art" alt="" width="88" height="88">
+        <img id="pet-avatar" class="pet-avatar" alt="当前宠物" width="76" height="76" referrerpolicy="no-referrer">
+        <span id="pet-avatar-fallback" class="pet-avatar-fallback">宠</span>
+      </button>
+      <div class="hero-copy"><div class="eyebrow-line"><span class="eyebrow">MIKU · ONEBOT QQ PET</span><a class="project-home" href="https://github.com/wassamriehlei/onebot-qqpet" target="_blank" rel="noopener noreferrer">上游项目</a></div><h1>Miku QQ 宠物 <small id="pet-name" class="pet-name"></small></h1><div class="account-line"><p id="account">正在连接 OneBot…</p><button id="account-visibility" class="account-visibility" type="button" aria-label="显示完整账号信息" title="显示完整账号信息"><svg class="eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/></svg><svg class="eye-closed hidden" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18M10.6 6.1A10.8 10.8 0 0 1 12 6c6 0 9.5 6 9.5 6a16.6 16.6 0 0 1-2.5 3.2M6.2 6.2C3.8 8 2.5 12 2.5 12s3.5 6 9.5 6a10.1 10.1 0 0 0 3.1-.5M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button></div><div class="profile-facts"><span>生日 <b id="pet-birthday">--</b></span><span>性别 <b id="pet-gender">--</b></span><span>物种 <b id="pet-species">--</b></span><span>性格 <b id="pet-personality">--</b></span></div></div>
+      <div class="hero-status"><span id="connection" class="pill warn">连接中</span><small id="updated-at">等待首次同步</small></div>
+    </header>
+
+    <section class="metrics" aria-label="宠物状态">
+      <article class="metric-gold"><img id="gold-reward-icon" class="metric-art" alt="" width="30" height="30"><label>金币</label><strong id="gold">--</strong></article>
+      <article class="metric-feel"><label>心情</label><strong id="feel">--</strong></article>
+      <article class="metric-energy"><label>体力</label><strong id="hunger">--</strong></article>
+      <article class="metric-clean"><label>清洁</label><strong id="clean">--</strong></article>
+      <article class="metric-total"><label>综合</label><strong id="total">--</strong></article>
+      <article class="attribute"><label>力量累计</label><strong id="strength">--</strong></article>
+      <article class="attribute"><label>智力累计</label><strong id="intelligence">--</strong></article>
+      <article class="attribute"><label>魅力累计</label><strong id="charm">--</strong></article>
+      <article class="profile-metric"><label>等级</label><strong id="pet-level">--</strong></article>
+      <article class="profile-metric"><label>经验</label><strong id="pet-experience">--</strong><small id="experience-rate"></small></article>
+      <article class="profile-metric"><label>疲劳状态</label><strong id="fatigue">--</strong></article>
+    </section>
+
+    <section class="grid">
+      <article class="panel span2">
+        <div class="title">
+          <div class="actions" style="margin-top:0"><h2 style="margin:0">自动托管</h2><span id="automation" class="pill">已停止</span></div>
+          <button id="start" class="small success">启动</button><button id="stop" hidden></button>
+        </div>
+        <span id="activity" hidden></span>
+        <button id="refresh" hidden></button><button id="once" hidden></button>
+        <div id="error" class="error hidden"></div>
+      </article>
+
+      <article class="panel task-panel">
+        <h2>当前任务</h2>
+        <div class="task-content"><img id="story-icon" class="story-icon hidden" alt="任务素材" width="70" height="70"><dl><dt>任务状态</dt><dd id="story-status">空闲</dd><dt>Story ID</dt><dd id="story-id">无</dd><dt>剩余 / 总时长</dt><dd id="story-time">--</dd></dl></div>
+      </article>
+
+      <article class="panel">
+        <h2>背包</h2>
+        <dl class="inventory"><dt>饼干</dt><dd id="biscuits">--</dd><dt>虾仁</dt><dd id="shrimp">--</dd><dt>香皂片</dt><dd id="soap">--</dd><dt>沐浴球</dt><dd id="bath-ball">--</dd></dl>
+      </article>
+
+      <article class="panel span2">
+        <div class="title"><h2>今日进度</h2></div>
+        <div class="counts"><span>学习 <b id="count-school">0</b></span><span>打工 <b id="count-work">0</b></span><span>冒险 <b id="count-adventure">0</b></span><span>喂食 <b id="count-feed">0</b></span><span>洗澡 <b id="count-wash">0</b></span><span>今日经验 <b id="daily-experience">0</b></span><span>好友走访 <b id="count-visitFriend">0</b></span><span>陌生人走访 <b id="count-visitStranger">0</b></span><span>照顾别人 <b id="count-careOther">0</b></span></div>
+      </article>
+
+      <article id="medals-panel" class="panel span2 hidden"><div class="title"><div><h2>我的徽章</h2><p>展示服务器返回的全部徽章、获得状态与佩戴状态</p></div><span id="medal-count" class="pill"></span></div><div id="medals" class="medals"></div></article>
+
+      <article id="interactions-panel" class="panel span2 hidden"><div class="title"><div><h2>互动消息</h2><p>服务器返回的最近互动记录，仅作只读展示</p></div><span id="interaction-count" class="pill"></span></div><div id="interactions" class="interactions"></div></article>
+
+      <article id="career-tree-panel" class="panel span2 hidden">
+        <div class="title"><div><h2>职业树</h2><p>服务器返回的职业名称、职业编号与解锁说明</p></div></div>
+        <div id="career-tree" class="career-tree"></div>
+      </article>
+
+      <article class="panel span2">
+        <div class="title settings-title"><div><h2>托管设置</h2><p>配置保存在 Miku 独立组件中</p></div><button id="save">保存设置</button></div>
+        <form id="settings">
+          <fieldset><legend>安全与轮询</legend>
+            <label>页面与后端刷新秒数<input name="intervalSeconds" type="number" min="3" max="300"><small>页面轮询与后端检查使用同一周期</small></label>
+            <label>学习金币阈值<input name="coinThreshold" type="number" min="0"></label>
+            <label>任务优先顺序<select name="taskPriority"><option value="school">优先学习</option><option value="work">优先打工</option></select><small>金币不足时自动改为打工</small></label>
+            <label>超过 8 小时后<select name="fatigue8HourAction"><option value="rest">休息</option><option value="work">打工</option><option value="school">学习</option><option value="adventure">冒险</option></select><small>服务器提示收益降至 25% 后执行</small></label>
+            <label>超过 12 小时后<select name="fatigue12HourAction"><option value="rest">休息</option><option value="work">打工</option><option value="school">学习</option><option value="adventure">冒险</option></select><small>服务器提示收益降至 10% 后执行，优先于 8 小时设置</small></label>
+          </fieldset>
+          <fieldset><legend>自动照顾</legend>
+            <label class="check"><input name="careEnabled" type="checkbox">启用</label>
+            <label class="check"><input name="autoBuySupplies" type="checkbox">自动购买用品</label>
+            <label>喂食阈值<input name="hungerThreshold" type="number" min="0"></label>
+            <label>洗澡阈值<input name="cleanThreshold" type="number" min="0"></label>
+            <label>购买饼干数<input name="foodPurchaseCount" type="number" min="1"></label>
+            <label>购买沐浴球数<input name="bathPurchaseCount" type="number" min="1"></label>
+          </fieldset>
+          <fieldset><legend>学习</legend>
+            <label class="check"><input name="schoolEnabled" type="checkbox">启用</label>
+            <label>属性<select name="schoolAttribute"><option value="physical">力量</option><option value="culture">智力</option><option value="art">魅力</option></select></label>
+            <label class="check"><input name="schoolRotationEnabled" type="checkbox">定期轮换三种属性</label>
+            <label>每完成几次轮换<input name="schoolRotationEvery" type="number" min="1"></label>
+            <p id="school-rotation-status">当前学习属性：--</p><p>轮换开启时自动选当前属性的最高效率课程。</p>
+            <label>课程<select name="courseSubEvent"><option value="0">自动最高效率</option></select></label>
+            <div id="course-preview" class="catalog-preview"><img alt="课程素材" width="42" height="42"><span><b>自动选择课程</b><small>等待目录同步</small></span></div>
+          </fieldset>
+          <fieldset class="settings-wide"><legend>走访与照顾别人</legend>
+            <label class="check"><input name="visitEnabled" type="checkbox">启用自动走访</label>
+            <label class="check"><input name="visitFriends" type="checkbox">走访好友</label>
+            <label class="check"><input name="visitStrangers" type="checkbox">走访陌生人</label>
+            <label class="check"><input name="visitAutoCare" type="checkbox">自动照顾别人</label>
+            <label>主动走访人数上限/日<input name="visitMaxPerDay" type="number" min="0"><small>0 不限</small></label>
+            <label>走访等待最短分钟<input name="visitDelayMinMinutes" type="number" min="0"></label>
+            <label>走访等待最长分钟<input name="visitDelayMaxMinutes" type="number" min="0"></label>
+            <label>停止照顾的每日经验值<input name="otherCareDailyExperienceLimit" type="number" min="0"><small>三项属性今日增量之和，0 不限</small></label>
+            <label>候选扫描数<input name="visitCandidateScanLimit" type="number" min="1" max="200"></label>
+            <label>陌生人群号<input name="visitStrangerGroupIds" placeholder="留空自动选群"></label>
+          </fieldset>
+          <fieldset><legend>打工</legend>
+            <label class="check"><input name="workEnabled" type="checkbox">自动打工</label>
+            <label>岗位<select name="workJobSubEvent"><option value="0">自动最高效率</option></select></label>
+            <div id="work-preview" class="catalog-preview"><img alt="岗位素材" width="42" height="42"><span><b>自动选择岗位</b><small>等待目录同步</small></span></div>
+            <label>每日打工次数<input name="workTimesPerDay" type="number" min="0"></label>
+            <label class="check"><input name="employFriend" type="checkbox">自动雇佣好友宠物</label>
+            <label>雇佣候选扫描数<input name="workFriendScanLimit" type="number" min="1" max="200"><small>依次寻找拥有宠物且可参加当前岗位的好友</small></label>
+          </fieldset>
+          <fieldset><legend>冒险</legend>
+            <label class="check"><input name="adventureEnabled" type="checkbox">自动冒险</label>
+            <label>冒险<select name="adventureOption"><option value="">服务器首个可用项</option></select></label>
+            <label>开始时间<input name="adventureStartTime" type="time"></label>
+            <label>每日冒险次数<input name="adventureTimesPerDay" type="number" min="0"></label>
+          </fieldset>
+        </form>
+      </article>
+
+      <article class="panel span2"><h2>运行日志</h2><pre id="logs">尚无日志</pre></article>
+    </section>
+    <dialog id="avatar-dialog"><button id="avatar-close" class="dialog-close" type="button" aria-label="关闭">×</button><img id="full-avatar" alt="宠物高清立绘" width="600" height="600" referrerpolicy="no-referrer"><p id="avatar-caption"></p></dialog>
+    <div id="toast" role="status"></div>
+  </main>
+  <script type="module" src="/static/app.js?v=20260809-11"></script>
+</body>
+</html>

@@ -14,6 +14,7 @@ import type {
   NotificationDeliveryRecord,
   NotificationsConfig,
   OneBotConfig,
+  PluginState,
   QQInfo,
   SystemInfo,
   LogStorageSettingsPatch,
@@ -152,6 +153,14 @@ export interface ApiClient {
     unload(pid: number): Promise<ProcessActionResult>;
     refresh(pid: number): Promise<ProcessActionResult>;
     probeLoginInfo(pid: number, signal?: AbortSignal): Promise<unknown>;
+  };
+
+  plugins: {
+    list(): Promise<PluginState[]>;
+    setEnabled(id: string, enabled: boolean): Promise<PluginState>;
+    start(id: string): Promise<PluginState>;
+    stop(id: string): Promise<PluginState>;
+    restart(id: string): Promise<PluginState>;
   };
 
   // ---- OneBotInstance per-UIN config ----

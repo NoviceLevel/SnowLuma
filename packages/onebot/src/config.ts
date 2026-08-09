@@ -40,13 +40,13 @@ function makeDefaultStatusCommand(): StatusCommandConfig {
   return { ...DEFAULT_STATUS_COMMAND };
 }
 
-export function makeDefaultOneBotConfig(): OneBotConfig {
+export function makeDefaultOneBotConfig(httpPort = 3000, wsPort = httpPort + 1): OneBotConfig {
   return {
     networks: {
       httpServers: [{
         name: 'http-default',
         host: '127.0.0.1',
-        port: 3000,
+        port: httpPort,
         path: '/',
         enableWebSocket: false,
         accessToken: generateAccessToken(),
@@ -57,7 +57,7 @@ export function makeDefaultOneBotConfig(): OneBotConfig {
       wsServers: [{
         name: 'ws-default',
         host: '127.0.0.1',
-        port: 3001,
+        port: wsPort,
         path: '/',
         role: 'Universal',
         accessToken: generateAccessToken(),
@@ -74,6 +74,40 @@ export function makeDefaultOneBotConfig(): OneBotConfig {
 
 function generateAccessToken(): string {
   return randomBytes(DEFAULT_ACCESS_TOKEN_BYTES).toString('base64url');
+}
+
+/** Pick an unused local HTTP/WebSocket pair for a newly discovered account. */
+function findAvailableDefaultPorts(excludeUin: string): { httpPort: number; wsPort: number } {
+  const used = new Set<number>();
+  try {
+    for (const name of fs.readdirSync(CONFIG_DIR)) {
+      const match = name.match(/^onebot_(\d+)\.json$/);
+      if (!match || match[1] === excludeUin) continue;
+      try {
+        const raw = JSON.parse(fs.readFileSync(path.join(CONFIG_DIR, name), 'utf8')) as JsonObject;
+        const networks = raw.networks as JsonObject | undefined;
+        for (const kind of ['httpServers', 'wsServers'] as const) {
+          const entries = networks?.[kind];
+          if (!Array.isArray(entries)) continue;
+          for (const entry of entries) {
+            if (!entry || typeof entry !== 'object') continue;
+            const port = Number((entry as JsonObject).port);
+            if (Number.isInteger(port)) used.add(port);
+          }
+        }
+      } catch {
+        // A malformed unrelated config is reported by its own account later.
+      }
+    }
+  } catch {
+    // The config directory is created by loadOneBotConfig before this helper runs.
+  }
+
+  for (let httpPort = 3000; httpPort <= 65534; httpPort += 2) {
+    const wsPort = httpPort + 1;
+    if (!used.has(httpPort) && !used.has(wsPort)) return { httpPort, wsPort };
+  }
+  return { httpPort: 3000, wsPort: 3001 };
 }
 
 export interface LoadOneBotConfigOptions {
@@ -104,7 +138,13 @@ export function loadOneBotConfig(uin: string, options: LoadOneBotConfigOptions =
   if (globalRaw && !isCanonicalSnapshot) sources.push(globalRaw);
   if (perUinRaw) sources.push(perUinRaw);
 
-  const config = fromJson(sources, !perUinRaw && !globalRaw);
+  const freshInstall = !perUinRaw && !globalRaw;
+  const defaultPorts = freshInstall ? findAvailableDefaultPorts(uin) : undefined;
+  const config = fromJson(
+    sources,
+    freshInstall,
+    defaultPorts ? makeDefaultOneBotConfig(defaultPorts.httpPort, defaultPorts.wsPort) : undefined,
+  );
 
   if (options.persistDefaults && (!perUinRaw || legacy)) {
     saveOneBotConfig(uin, config, { mode: globalRaw ? 'overlay' : 'snapshot' });
@@ -684,7 +724,7 @@ function wsClientToJson(n: WsClientNetwork): JsonObject {
   return out;
 }
 
-function fromJson(sources: JsonObject[], freshInstall: boolean): OneBotConfig {
+function fromJson(sources: JsonObject[], freshInstall: boolean, freshDefaults?: OneBotConfig): OneBotConfig {
   let legacyFormat: MessageFormat | undefined;
   let legacyReport: boolean | undefined;
   for (const src of sources) {
@@ -706,7 +746,7 @@ function fromJson(sources: JsonObject[], freshInstall: boolean): OneBotConfig {
     wsServers.length === 0 &&
     wsClients.length === 0
   ) {
-    const defaults = makeDefaultOneBotConfig().networks;
+    const defaults = (freshDefaults ?? makeDefaultOneBotConfig()).networks;
     httpServers.push(...defaults.httpServers);
     wsServers.push(...defaults.wsServers);
   }

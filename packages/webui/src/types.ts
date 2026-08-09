@@ -22,6 +22,36 @@ export interface UpdateInfo {
   error?: string;
 }
 
+export interface PluginState {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  protocol: string;
+  authorizationRequired: boolean;
+  botUin: string | null;
+  multiAccount: boolean;
+  enabled: boolean;
+  folderName: string;
+  state: 'running' | 'external' | 'stopped' | 'error';
+  running: boolean;
+  managed: boolean;
+  pid: number | null;
+  webUrl: string | null;
+  webPort: number | null;
+  instances: Array<{
+    uin: string | null;
+    webUrl: string;
+    webPort: number;
+    health: Record<string, unknown> | null;
+  }>;
+  health: Record<string, unknown> | null;
+  startedAt: string | null;
+  lastExitCode: number | null;
+  lastError: string | null;
+  lastLog: string;
+}
+
 export interface QQInfo {
   uin: string;
   nickname: string;

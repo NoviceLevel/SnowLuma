@@ -20,6 +20,12 @@ export default defineConfig([
     '**/test/fixtures/**',
     'packages/runtime/native/**',
     'packages/mcp/src/generated/**',
+    'Plugin/**',
+    'index.obfuscated.mjs',
+    'index.readable-pre-local-renames.mjs',
+    'deobfuscated.js',
+    'rename-locals.mjs',
+    'rename-top-level.mjs',
   ]),
   {
     files: ['**/*.{js,mjs,cjs,ts,tsx}'],

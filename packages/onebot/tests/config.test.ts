@@ -258,6 +258,16 @@ describe('loadOneBotConfig', () => {
     expect(onDisk.statusCommand).toEqual({ enabled: true, swallow: false, cooldownSeconds: 5, trigger: '#sl' });
   });
 
+  it('assigns the next free port pair to a second new account', () => {
+    const first = loadOneBotConfig('10001', { persistDefaults: true });
+    const second = loadOneBotConfig('10002', { persistDefaults: true });
+
+    expect(first.networks.httpServers[0].port).toBe(3000);
+    expect(first.networks.wsServers[0].port).toBe(3001);
+    expect(second.networks.httpServers[0].port).toBe(3002);
+    expect(second.networks.wsServers[0].port).toBe(3003);
+  });
+
   it('fills statusCommand defaults and clamps a negative cooldown', () => {
     const uin = '10042';
     const dir = path.join(tempDir, 'config');
