@@ -193,8 +193,10 @@ const BaseConfig = (source_map: boolean = false) => defineConfig({
     },
     // Emit to monorepo root dist/ so the existing release pipeline keeps working.
     outDir: distDir,
-    // Required since outDir is outside the vite project root.
-    emptyOutDir: true
+    // Keep the runtime-owned config, logs, and account data under dist/ when
+    // rebuilding locally. Release jobs use a fresh checkout, so stale output
+    // cannot leak into their archive while local builds remain recoverable.
+    emptyOutDir: false
   },
   define: {
     __BUILD_WEBUI__: process.env.BUILD_WEBUI === 'true',
