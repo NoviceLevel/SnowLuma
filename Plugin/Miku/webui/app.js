@@ -24,6 +24,7 @@ let latestState={};
 let medalSignature='';
 let interactionSignature='';
 let careerSignature='';
+const baseDocumentTitle='Miku QQ 宠物';
 
 async function request(path,method='GET',body){
   const token=localStorage.getItem('token')||'';
@@ -64,10 +65,11 @@ function duration(value){
   return `${rest}秒`;
 }
 function renderStoryCountdown(){
-  if(!storyCountdown.storyId){text('story-time','--');return}
+  if(!storyCountdown.storyId){text('story-time','--');updateDocumentTitle();return}
   const elapsed=storyCountdown.finished?0:Math.max(0,Math.floor((Date.now()-storyCountdown.syncedAt)/1000));
   const remaining=storyCountdown.finished?0:Math.max(0,storyCountdown.remainingSeconds-elapsed);
   text('story-time',`${duration(remaining)} / ${duration(storyCountdown.durationSeconds)}`);
+  updateDocumentTitle();
 }
 function syncStoryCountdown(story){
   storyCountdown={
@@ -83,6 +85,29 @@ function storyType(story){
   if(prefix==='6400')return story.recallable?'被雇佣打工':'打工';
   if(prefix==='6700')return '冒险';
   return `未知任务（${prefix}）`;
+}
+function titleClock(seconds){
+  const value=Math.max(0,Math.trunc(Number(seconds)||0));
+  const hours=Math.floor(value/3600),minutes=Math.floor(value%3600/60),rest=value%60;
+  return `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}:${String(rest).padStart(2,'0')}`;
+}
+function updateDocumentTitle(){
+  const account=latestState.account||{};
+  const uin=String(account.uin||'');
+  const accountLabel=uin?`QQ ${uin.slice(-4)}`:'';
+  const story=latestState.story||{};
+  let activity='';
+  if(story.storyId&&!story.finished){
+    const elapsed=storyCountdown.finished?0:Math.floor((Date.now()-storyCountdown.syncedAt)/1000);
+    activity=`${storyType(story)} ${titleClock(Math.max(0,storyCountdown.remainingSeconds-elapsed))}`;
+  }else if(!latestState.connected){
+    activity='等待登录';
+  }else if(latestState.automationRunning){
+    activity='自动托管运行中';
+  }else{
+    activity='空闲';
+  }
+  document.title=[baseDocumentTitle,accountLabel,activity].filter(Boolean).join(' · ');
 }
 function toast(message){text('toast',message);$('toast').classList.add('show');setTimeout(()=>$('toast').classList.remove('show'),1800)}
 function showError(message){text('error',message);$('error').classList.toggle('hidden',!message)}
@@ -209,6 +234,7 @@ function applyControlState(){
 }
 function render(state){
   latestState=state;
+  updateDocumentTitle();
   automationRunning=Boolean(state.automationRunning);
   text('pet-name',state.account.petName?`· ${state.account.petName}`:'');
   renderAccount(state.account);
