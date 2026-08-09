@@ -436,7 +436,7 @@ const CACHED_DISTRO = (() => { try { return detectDistro(); } catch { return os.
 const CACHED_ARCH_LABEL = normalizeArch(os.arch());
 
 export async function initWebUI(
-  desiredPort: number = 5099,
+  desiredPort: number = 5100,
   oneBotManager: OneBotManager,
   hookManager?: HookManager,
   notificationManager?: NotificationManager,
@@ -487,7 +487,8 @@ export async function initWebUI(
     });
   }
 
-  // Actual bound port (set just before serve; findAvailablePort may bump it).
+  // Actual bound port. The WebUI uses one fixed endpoint so launchers and
+  // users never end up on a surprising secondary port.
   // Read by GET /api/system/settings so the panel shows what's really live.
   let boundPort = desiredPort;
 
@@ -1618,10 +1619,7 @@ export async function initWebUI(
   });
 
   const host = listener.host || '127.0.0.1';
-  const finalPort = await findAvailablePort(desiredPort, { host });
-  if (finalPort !== desiredPort) {
-    log.warn('port %d is in use, using %d instead', desiredPort, finalPort);
-  }
+  const finalPort = await findAvailablePort(desiredPort, { host, maxTries: 1 });
   boundPort = finalPort;
 
   // TLS is an explicit transport promise. Once enabled, an unusable pair must

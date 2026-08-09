@@ -128,8 +128,8 @@ export function PluginsPage() {
                         <td className="px-5 py-4 text-center">
                           {!plugin.enabled ? <Badge variant="secondary">已禁用</Badge>
                             : !plugin.running ? <Button size="sm" onClick={() => void run(plugin, 'start')} disabled={busy !== null}>{busy === `${plugin.id}:start` ? <Loader2 className="animate-spin" /> : <Play />}启动</Button>
-                            : plugin.managed ? <div className="inline-flex gap-2"><Button variant="outline" size="sm" onClick={() => void run(plugin, 'restart')} disabled={busy !== null}><RotateCw />重启</Button><Button variant="destructive" size="sm" onClick={() => void run(plugin, 'stop')} disabled={busy !== null}><Square />停止</Button></div>
-                              : <Badge variant="warning" title="该插件不是由当前 SnowLuma 进程启动，请在插件窗口中管理">外部管理</Badge>}
+                              : plugin.managed ? <div className="inline-flex gap-2"><Button variant="outline" size="sm" onClick={() => void run(plugin, 'restart')} disabled={busy !== null}><RotateCw />重启</Button><Button variant="destructive" size="sm" onClick={() => void run(plugin, 'stop')} disabled={busy !== null}><Square />停止</Button></div>
+                                : <Badge variant="warning" title="该插件不是由当前 SnowLuma 进程启动，请在插件窗口中管理">外部管理</Badge>}
                         </td>
                       </tr>
                     ))}

@@ -20,7 +20,8 @@ function configuredAccounts() {
       try {
         const config = JSON.parse(readFileSync(path.join(configDir, item.name), 'utf8'));
         const server = config.networks?.httpServers?.find((candidate) => (
-          candidate && Number.isInteger(Number(candidate.port)) && candidate.accessToken
+          candidate && candidate.enabled !== false
+          && Number.isInteger(Number(candidate.port)) && candidate.accessToken
         ));
         if (!server) return null;
         const host = typeof server.host === 'string' ? server.host : '127.0.0.1';

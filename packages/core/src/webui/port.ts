@@ -24,19 +24,17 @@ function isPortAvailable(port: number, host = '127.0.0.1'): Promise<boolean> {
 }
 
 /**
- * Find an available TCP port starting from `start`, advancing by 1 up to `maxTries` attempts.
- * Skips reserved/invalid port numbers.
+ * Verify the requested TCP port is available. Ports are never incremented:
+ * the WebUI has a fixed endpoint and a collision must be reported.
  */
 export async function findAvailablePort(
   start: number,
   options: { maxTries?: number; host?: string } = {},
 ): Promise<number> {
-  const { maxTries = 50, host = '127.0.0.1' } = options;
+  const { maxTries = 1, host = '127.0.0.1' } = options;
   let port = Math.max(1, Math.min(65535, Math.trunc(start)));
-  for (let i = 0; i < maxTries; i++) {
-    if (port > 65535) break;
-    if (await isPortAvailable(port, host)) return port;
-    port += 1;
+  if (maxTries < 1 || port > 65535 || !(await isPortAvailable(port, host))) {
+    throw new Error(`WebUI port ${String(start)} is already in use or unavailable`);
   }
-  throw new Error(`No available TCP port found near ${start}`);
+  return port;
 }

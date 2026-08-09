@@ -89,7 +89,7 @@ async function main() {
   ) {
     try {
       const { initWebUI } = await import('./webui/server');
-      await initWebUI(runtimeConfig.webuiPort || 5099, oneBotManager, hookManager, notificationManager, {
+      await initWebUI(runtimeConfig.webuiPort || 5100, oneBotManager, hookManager, notificationManager, {
         host: runtimeConfig.webuiHost,
         tlsEnabled: runtimeConfig.webuiTls?.enabled,
         trustProxy: runtimeConfig.trustProxy,
@@ -97,6 +97,9 @@ async function main() {
       });
     } catch (err) {
       log.error('Failed to start WebUI: ', err);
+      // The WebUI is the fixed management endpoint. Continuing without it
+      // leaves a running process that cannot be managed from the UI.
+      throw err;
     }
   }
 

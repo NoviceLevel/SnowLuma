@@ -1,3 +1,5 @@
+cd /d "%~dp0"
+
 node .\check-node-version.cjs
 if errorlevel 1 (
   pause

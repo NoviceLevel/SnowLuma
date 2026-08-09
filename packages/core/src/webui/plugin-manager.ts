@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -133,9 +133,11 @@ export class PluginManager {
       if (code !== 0 && !record.lastError) record.lastError = `进程退出：${code ?? signal ?? 'unknown'}`;
     });
     this.records.set(id, record);
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    const result = await this.state(descriptor);
-    if (!result.running) throw new Error(record.lastLog.trim() || record.lastError || '插件启动后立即退出');
+    const result = await this.waitForStartup(descriptor, record);
+    if (!result) {
+      await this.stopManagedRecord(record);
+      throw new Error(record.lastLog.trim() || record.lastError || '插件启动后未达到健康状态');
+    }
     return result;
   }
 
@@ -146,11 +148,7 @@ export class PluginManager {
       if (await this.probeHealth(descriptor)) throw new Error('插件由外部程序启动，请从原启动位置停止');
       return this.state(descriptor);
     }
-    record.child.kill('SIGTERM');
-    await Promise.race([
-      new Promise<void>((resolve) => record.child.once('exit', () => resolve())),
-      new Promise<void>((resolve) => setTimeout(resolve, 3000)),
-    ]);
+    await this.stopManagedRecord(record);
     return this.state(descriptor);
   }
 
@@ -265,7 +263,8 @@ export class PluginManager {
 
   private configAccounts(): Array<{ uin: string; index: number }> {
     try {
-      const accounts = readdirSync(path.resolve(process.cwd(), 'config'))
+      const configDir = path.resolve(this.root, '..', 'config');
+      const accounts = readdirSync(configDir)
         .map((name) => name.match(/^onebot_(\d+)\.json$/)?.[1])
         .filter((uin): uin is string => Boolean(uin))
         .sort((a, b) => a.localeCompare(b));
@@ -287,7 +286,8 @@ export class PluginManager {
     let port = 3000;
     try { const url = new URL(readEnvValue(descriptor.configPath, 'QQPET_ONEBOT_URL')); port = Number(url.port || (url.protocol === 'https:' ? 443 : 80)); } catch { /* optional */ }
     try {
-      const candidates = readdirSync(path.resolve(process.cwd(), 'config'), { withFileTypes: true }).filter((item) => item.isFile() && /^onebot_\d+\.json$/.test(item.name)).map((item) => ({ path: path.join(process.cwd(), 'config', item.name), name: item.name, mtime: statSync(path.join(process.cwd(), 'config', item.name)).mtimeMs })).sort((a, b) => {
+      const configDir = path.resolve(this.root, '..', 'config');
+      const candidates = readdirSync(configDir, { withFileTypes: true }).filter((item) => item.isFile() && /^onebot_\d+\.json$/.test(item.name)).map((item) => ({ path: path.join(configDir, item.name), name: item.name, mtime: statSync(path.join(configDir, item.name)).mtimeMs })).sort((a, b) => {
         if (descriptor.botUin) {
           const aMatch = a.name === `onebot_${descriptor.botUin}.json`;
           const bMatch = b.name === `onebot_${descriptor.botUin}.json`;
@@ -311,5 +311,57 @@ export class PluginManager {
       const body = await response.json().catch(() => null) as Record<string, unknown> | null;
       return body?.status === 'ok' ? body as PluginHealth : null;
     } catch { return null; }
+  }
+
+  private async waitForStartup(
+    descriptor: PluginDescriptor,
+    record: ManagedRecord,
+  ): Promise<PluginState | null> {
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      if (record.child.exitCode !== null || record.child.killed) return null;
+      const current = await this.state(descriptor);
+      if (!descriptor.webUrl || current.health || current.instances.some((instance) => instance.health)) {
+        return current;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return null;
+  }
+
+  private async stopManagedRecord(record: ManagedRecord): Promise<void> {
+    const child = record.child;
+    if (child.exitCode !== null || child.killed) return;
+    child.kill('SIGTERM');
+    if (await this.waitForChildExit(child, 3000)) return;
+    await this.forceTerminateTree(child);
+    if (!(await this.waitForChildExit(child, 1000))) {
+      throw new Error('插件进程停止超时');
+    }
+  }
+
+  private async forceTerminateTree(child: ChildProcess): Promise<void> {
+    if (process.platform !== 'win32' || !child.pid) {
+      child.kill('SIGKILL');
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      execFile('taskkill', ['/pid', String(child.pid), '/t', '/f'], () => resolve());
+    });
+  }
+
+  private async waitForChildExit(child: ChildProcess, timeoutMs: number): Promise<boolean> {
+    if (child.exitCode !== null) return true;
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (value: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      };
+      const timer = setTimeout(() => finish(child.exitCode !== null), timeoutMs);
+      child.once('exit', () => finish(true));
+    });
   }
 }

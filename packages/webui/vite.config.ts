@@ -24,10 +24,10 @@ export default defineConfig({
   },
   server: {
     port: 5178,
-    strictPort: false,
+    strictPort: true,
     proxy: {
-      '/api': { target: 'http://localhost:5099', changeOrigin: true, ws: true },
-      '/avatar': { target: 'http://localhost:5099', changeOrigin: true },
+      '/api': { target: 'http://localhost:5100', changeOrigin: true, ws: true },
+      '/avatar': { target: 'http://localhost:5100', changeOrigin: true },
     },
   },
   build: {
