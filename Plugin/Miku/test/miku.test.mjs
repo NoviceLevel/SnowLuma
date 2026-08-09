@@ -17,9 +17,12 @@ import { configuredAccounts } from '../multi.mjs';
 const pluginDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 describe('Miku configuration and persistence', () => {
-  test('starts in read-only manual mode by default', () => {
+  test('starts in manual, attribute-first mode by default', () => {
     assert.equal(DEFAULT_CONFIG.autoStart, false);
-    assert.equal(DEFAULT_CONFIG.safeMode, true);
+    assert.equal(DEFAULT_CONFIG.safeMode, false);
+    assert.equal(DEFAULT_CONFIG.coinThreshold, 0);
+    assert.equal(DEFAULT_CONFIG.schoolRotationEnabled, true);
+    assert.equal(DEFAULT_CONFIG.adventureEnabled, false);
     assert.equal(normalizeConfig({ intervalSeconds: 1 }).intervalSeconds, 3);
   });
 

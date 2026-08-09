@@ -20,7 +20,7 @@ QQPET_WEB_PORT=8091
 QQPET_DATA_DIR=
 ```
 
-关闭窗口会停止组件。Miku 会扫描 SnowLuma 的 `config/onebot_<QQ>.json`，为每个账号启动一个独立工作进程；WebUI 从 `8091` 开始按账号递增（例如 `8091`、`8092`），数据默认保存在用户目录的 `.qqpet-miku` 下并按 QQ 号隔离。
+关闭窗口会停止组件。Miku 会扫描 SnowLuma 的 `config/onebot_<QQ>.json`，为每个账号启动一个独立工作进程；WebUI 从 `8091` 开始按账号递增（例如 `8091`、`8092`），数据默认保存在用户目录的 `.qqpet-miku` 下并按 QQ 号隔离。默认关闭安全模式、优先学习属性，启动前请先核对账号状态。
 
 `QQPET_BOT_UIN` 只用于指定第一个显示的账号，不会限制其他账号启动。没有 SnowLuma 配置目录时，Miku 退回到 `QQPET_ONEBOT_URL` / `QQPET_ONEBOT_TOKEN` 的单账号模式。
 
