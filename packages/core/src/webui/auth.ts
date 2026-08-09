@@ -179,15 +179,12 @@ export class WebuiAuth {
         const parsed = JSON.parse(raw) as unknown;
         if (isValidState(parsed)) {
           if (parsed.mustChangePassword) {
-            // Previous start generated a bootstrap password but the operator
-            // never completed the forced-change flow. The plaintext is gone
-            // (only the hash is on disk, and the log line from last run may
-            // be lost), so rotate to a fresh CSPRNG password they can see.
-            const initialPassword = randomBytes(8).toString('hex');
-            const state = generateInitialState(initialPassword);
-            atomicWrite(state);
-            log.warn('previous bootstrap password was never rotated; regenerated a new one');
-            return new WebuiAuth(state, initialPassword, false);
+            // Keep the existing bootstrap hash stable until the operator
+            // completes the forced password change. Replacing it on every
+            // restart makes a build or service restart invalidate the only
+            // password the operator was given.
+            log.warn('password change is still required; keeping the existing bootstrap credential');
+            return new WebuiAuth(parsed, null, false);
           }
           return new WebuiAuth(parsed, null, false);
         }
