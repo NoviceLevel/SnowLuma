@@ -195,11 +195,17 @@ function formatAttributeDelta(delta){
   return Object.entries(names).map(([key,label])=>`${label} ${Number(delta[key]||0)>=0?'+':''}${num(delta[key],1)}`).join(' · ');
 }
 function renderTelemetry(progress={}){
-  const items=(progress.telemetry||[]).filter(item=>item&&item.status==='settled').slice(-30).reverse();
+  const settled=(progress.telemetry||[]).filter(item=>item&&item.status==='settled').slice(-30).reverse();
+  const pending=progress.pending?.kind&&progress.pending.beforeValues?{
+    ...progress.pending,
+    status:'running',
+    elapsedSeconds:Math.max(0,Math.round((Date.now()-Date.parse(progress.pending.startedAt||progress.pending.createdAt||Date.now()))/1000))
+  }:null;
+  const items=pending?[pending,...settled]:settled;
   const panel=$('telemetry-panel'),root=$('telemetry');
   panel.classList.toggle('hidden',!items.length);
-  const totalGain=items.reduce((sum,item)=>sum+Object.values(item.delta||{}).reduce((value,delta)=>value+Math.max(0,Number(delta)||0),0),0);
-  text('telemetry-summary',items.length?`${items.length} 次结算 · 属性增量 ${num(totalGain,1)}`:'暂无结算数据');
+  const totalGain=settled.reduce((sum,item)=>sum+Object.values(item.delta||{}).reduce((value,delta)=>value+Math.max(0,Number(delta)||0),0),0);
+  text('telemetry-summary',pending?`${settled.length} 次结算 · 当前任务进行中`:settled.length?`${settled.length} 次结算 · 属性增量 ${num(totalGain,1)}`:'暂无结算数据');
   root.replaceChildren();
   for(const item of items){
     const row=document.createElement('article');row.className='telemetry-row';
@@ -207,7 +213,7 @@ function renderTelemetry(progress={}){
     const name=item.item?.name||({school:'学习',work:'打工',adventure:'冒险'}[item.kind]||item.kind||'任务');
     title.textContent=`${name}${item.attribute?` · ${({physical:'力量',culture:'智力',art:'魅力'})[item.attribute]||item.attribute}`:''}`;
     meta.textContent=[item.kind,item.elapsedSeconds?`${item.elapsedSeconds}s`:'耗时未知',item.item?.reward||'收益未知'].filter(Boolean).join(' · ');
-    detail.textContent=formatAttributeDelta(item.delta);
+    detail.textContent=item.status==='running'?'等待结算后记录实际属性增量':formatAttributeDelta(item.delta);
     row.append(title,meta,detail);root.append(row);
   }
 }
