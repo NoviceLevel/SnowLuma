@@ -27,6 +27,7 @@ const DEFAULT_CONFIG_VALUES = {
   failureCooldownSeconds: 3600,
   schoolEnabled: true,
   schoolAttribute: "physical",
+  schoolSelectionMode: "lowest",
   schoolRotationEnabled: true,
   schoolRotationEvery: 1,
   courseSubEvent: 0,
@@ -78,6 +79,9 @@ function normalizeConfig(input) {
   }
   if (!["culture", "physical", "art"].includes(config.schoolAttribute)) {
     config.schoolAttribute = "physical";
+  }
+  if (!["lowest", "rotation", "fixed"].includes(config.schoolSelectionMode)) {
+    config.schoolSelectionMode = "lowest";
   }
   if (!["school", "work"].includes(config.taskPriority)) {
     config.taskPriority = "school";
@@ -137,7 +141,8 @@ function createDailyProgress() {
     schoolRotationProgress: 0,
     visitedTargetIds: [],
     attributeBaseline: null,
-    dailyExperienceGain: 0
+    dailyExperienceGain: 0,
+    telemetry: []
   };
 }
 function writeJsonAtomically(filePath, value) {
@@ -203,7 +208,8 @@ class ProgressStore {
           intelligence: Math.max(0, Number(value6.attributeBaseline.intelligence) || 0),
           charm: Math.max(0, Number(value6.attributeBaseline.charm) || 0)
         } : null,
-        dailyExperienceGain: Math.max(0, Math.trunc(Number(value6.dailyExperienceGain) || 0))
+        dailyExperienceGain: Math.max(0, Math.trunc(Number(value6.dailyExperienceGain) || 0)),
+        telemetry: Array.isArray(value6.telemetry) ? value6.telemetry.slice(-100) : []
       };
     } catch (error) {
       backupCorruptFile(arg12, error);
@@ -267,12 +273,13 @@ class ProgressStore {
     this.save();
     return this.state.schoolRotationIndex;
   }
-  setPending(arg17, arg2 = "") {
+  setPending(arg17, arg2 = "", metadata = {}) {
     this.state.pending = {
       kind: arg17,
       createdAt: new Date().toISOString(),
       confirmed: !!arg2,
-      storyId: arg2
+      storyId: arg2,
+      ...metadata
     };
     this.save();
   }
@@ -388,6 +395,15 @@ class ProgressStore {
     }
     this.save();
     return this.state.dailyExperienceGain;
+  }
+  recordTelemetry(entry) {
+    this.rollover();
+    this.state.telemetry.push({
+      ...entry,
+      recordedAt: entry.recordedAt ?? new Date().toISOString()
+    });
+    this.state.telemetry = this.state.telemetry.slice(-100);
+    this.save();
   }
 }
 const tt = 16384;
@@ -1259,6 +1275,57 @@ class QQPetApi {
 }
 const delaySeconds = arg168 => new Promise(resolve2 => setTimeout(resolve2, Math.max(0, arg168) * 1000));
 const ATTRIBUTE_ROTATION = ["physical", "culture", "art"];
+const ATTRIBUTE_KEYS = {
+  physical: "strength",
+  culture: "intelligence",
+  art: "charm"
+};
+function attributeSnapshot(values) {
+  if (!values || typeof values !== "object") return null;
+  return {
+    strength: Math.max(0, Number(values.strength) || 0),
+    intelligence: Math.max(0, Number(values.intelligence) || 0),
+    charm: Math.max(0, Number(values.charm) || 0)
+  };
+}
+function compactTask(item) {
+  if (!item || typeof item !== "object") return null;
+  return {
+    name: String(item.name ?? ""),
+    subEventType: Number(item.subEventType) || 0,
+    careerName: String(item.careerName ?? ""),
+    duration: String(item.duration ?? ""),
+    reward: String(item.reward ?? ""),
+    cost: String(item.cost ?? "")
+  };
+}
+function lowestSchoolAttribute(config, values) {
+  const base = Math.max(0, ATTRIBUTE_ROTATION.indexOf(config.schoolAttribute));
+  const order = ATTRIBUTE_ROTATION.map((attribute, index) => ({
+    attribute,
+    value: Number(values?.[ATTRIBUTE_KEYS[attribute]] ?? Number.MAX_SAFE_INTEGER),
+    tie: (index - base + ATTRIBUTE_ROTATION.length) % ATTRIBUTE_ROTATION.length
+  }));
+  order.sort((left, right) => left.value - right.value || left.tie - right.tie);
+  return order[0]?.attribute ?? config.schoolAttribute;
+}
+function selectSchoolAttribute(config, values, rotationIndex = 0) {
+  if (config.schoolSelectionMode === "lowest") {
+    return lowestSchoolAttribute(config, values);
+  }
+  if (config.schoolSelectionMode === "rotation") {
+    return jt({ ...config, schoolRotationEnabled: true }, rotationIndex);
+  }
+  return config.schoolAttribute;
+}
+function telemetryDelta(before, after) {
+  if (!before || !after) return null;
+  return {
+    strength: Number((after.strength - before.strength).toFixed(3)),
+    intelligence: Number((after.intelligence - before.intelligence).toFixed(3)),
+    charm: Number((after.charm - before.charm).toFixed(3))
+  };
+}
 function ut(arg169, arg228, arg38 = Math.random) {
   const value185 = Math.max(0, Math.trunc(arg169 * 60));
   const value186 = Math.max(value185, Math.trunc(arg228 * 60));
@@ -1465,6 +1532,27 @@ class AutomationController {
     } else {
       return false;
     }
+  }
+  recordTaskTelemetry(pending, status, afterValues) {
+    if (!pending?.kind || !pending.beforeValues) return;
+    const before = attributeSnapshot(pending.beforeValues);
+    const after = attributeSnapshot(afterValues);
+    const settledAt = new Date().toISOString();
+    const startedAt = pending.startedAt ?? pending.createdAt ?? settledAt;
+    const startedMs = Date.parse(startedAt);
+    this.progress.recordTelemetry({
+      kind: pending.kind,
+      status,
+      storyId: pending.storyId ?? "",
+      startedAt,
+      settledAt,
+      elapsedSeconds: Number.isFinite(startedMs) ? Math.max(0, Math.round((Date.parse(settledAt) - startedMs) / 1000)) : null,
+      attribute: pending.attribute ?? null,
+      item: pending.item ?? null,
+      before,
+      after,
+      delta: telemetryDelta(before, after)
+    });
   }
   decide(arg178, arg235) {
     const value198 = this.progress.snapshot().counts;
@@ -1737,14 +1825,29 @@ class AutomationController {
         }
         try {
           await arg188.settleStory(story4.storyId);
+          let afterValues = null;
+          try {
+            await delaySeconds(Math.max(1, arg238.verifyDelaySeconds));
+            afterValues = await arg188.queryValues();
+            this.progress.recordAttributes(afterValues);
+          } catch (error) {
+            this.host.log("浠诲姟宸茬粨绠楋紝浣嗘棤娉曡鍙栨渶鏂板睘鎬э細" + (error instanceof Error ? error.message : String(error)));
+          }
+          this.recordTaskTelemetry(story5, "settled", afterValues);
           this.progress.markStorySettled(story4.storyId);
-          if (story5?.kind === "school" && arg238.schoolRotationEnabled) {
+          if (story5?.kind === "school" && arg238.schoolSelectionMode === "rotation" && arg238.schoolRotationEnabled) {
             this.progress.advanceSchoolRotation(arg238.schoolRotationEvery);
           } else if (story5) {
             this.progress.increment(story5.kind);
           }
           this.progress.clearPending();
           this.progress.clearBlock(value232);
+          if (afterValues) {
+            this.host.updateStatus({
+              values: afterValues,
+              progress: this.progress.snapshot()
+            });
+          }
           this.host.log("任务已结算并记录：" + story4.storyId);
         } catch (value231) {
           if (Wt(value231)) {
@@ -1969,10 +2072,16 @@ class AutomationController {
         return value268;
       }
       if (value268 === "school") {
-        const value259 = jt(config3, this.progress.snapshot().schoolRotationIndex);
-        const value260 = config3.schoolRotationEnabled ? 0 : config3.courseSubEvent;
+        const progress = this.progress.snapshot();
+        const value259 = selectSchoolAttribute(config3, values6, progress.schoolRotationIndex);
+        const value260 = config3.schoolSelectionMode === "fixed" ? config3.courseSubEvent : 0;
         const story7 = await value264.startSchool(value259, value260);
-        this.progress.setPending("school", story7.storyId);
+        this.progress.setPending("school", story7.storyId, {
+          startedAt: new Date().toISOString(),
+          attribute: value259,
+          item: compactTask(story7.item),
+          beforeValues: attributeSnapshot(values6)
+        });
         const value261 = {
           physical: "力量",
           culture: "智力",
@@ -1985,12 +2094,20 @@ class AutomationController {
           uin: value262.target.uin,
           petId: value262.target.petId
         } : undefined);
-        this.progress.setPending("work", story8.storyId);
+        this.progress.setPending("work", story8.storyId, {
+          startedAt: new Date().toISOString(),
+          item: compactTask(story8.item),
+          beforeValues: attributeSnapshot(values6)
+        });
         const value263 = story8.hiredFriend && value262 ? "，已雇佣好友" + this.targetLabel(value262.target) + "（加成 " + (value262.bonus >= 0 ? "+" : "") + value262.bonus + "）" : "";
         this.host.log("已开始打工“" + story8.item.name + "”" + value263 + (story8.storyId ? "，storyId=" + story8.storyId : ""));
       } else {
         const story9 = await value264.startAdventure(config3.adventureOption);
-        this.progress.setPending("adventure", story9.storyId);
+        this.progress.setPending("adventure", story9.storyId, {
+          startedAt: new Date().toISOString(),
+          item: compactTask(story9.item),
+          beforeValues: attributeSnapshot(values6)
+        });
         this.host.log("已开始冒险“" + story9.item.name + "”" + (story9.storyId ? "，storyId=" + story9.storyId : ""));
       }
       return value268;
@@ -2789,5 +2906,6 @@ export {
   createWebServer,
   normalizeConfig,
   resolveStaticAssetPath,
+  selectSchoolAttribute,
   writeJsonAtomically
 };

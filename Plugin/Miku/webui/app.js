@@ -133,6 +133,12 @@ function catalogItems(kind){
 function activeSchoolRewardKeyword(){
   const order=['physical','culture','art'],names={physical:'力量',culture:'智力',art:'魅力'};
   const configured=String(form.elements.schoolAttribute?.value||latestConfig.schoolAttribute||'physical');
+  const mode=String(form.elements.schoolSelectionMode?.value||latestConfig.schoolSelectionMode||'lowest');
+  if(mode==='lowest'){
+    const values=latestState.values||{};
+    const keys={physical:'strength',culture:'intelligence',art:'charm'};
+    return names[order.slice().sort((a,b)=>Number(values[keys[a]]??Number.MAX_SAFE_INTEGER)-Number(values[keys[b]]??Number.MAX_SAFE_INTEGER))[0]]||names[configured];
+  }
   const base=Math.max(0,order.indexOf(configured));
   const rotation=form.elements.schoolRotationEnabled?.checked?Number(latestState.progress?.schoolRotationIndex||0):0;
   return names[order[(base+rotation)%order.length]];
@@ -181,6 +187,28 @@ function renderInteractions(items){
     const time=Number(item.timestamp)>0?new Date(item.timestamp).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}):'时间未知';
     meta.textContent=[interactionType(item.eventType),item.uin?`QQ ${item.uin}`:'',time].filter(Boolean).join(' · ');
     body.textContent=item.text||'';head.append(who,meta);row.append(head,body);root.append(row);
+  }
+}
+function formatAttributeDelta(delta){
+  if(!delta)return '属性快照缺失';
+  const names={strength:'力量',intelligence:'智力',charm:'魅力'};
+  return Object.entries(names).map(([key,label])=>`${label} ${Number(delta[key]||0)>=0?'+':''}${num(delta[key],1)}`).join(' · ');
+}
+function renderTelemetry(progress={}){
+  const items=(progress.telemetry||[]).filter(item=>item&&item.status==='settled').slice(-30).reverse();
+  const panel=$('telemetry-panel'),root=$('telemetry');
+  panel.classList.toggle('hidden',!items.length);
+  const totalGain=items.reduce((sum,item)=>sum+Object.values(item.delta||{}).reduce((value,delta)=>value+Math.max(0,Number(delta)||0),0),0);
+  text('telemetry-summary',items.length?`${items.length} 次结算 · 属性增量 ${num(totalGain,1)}`:'暂无结算数据');
+  root.replaceChildren();
+  for(const item of items){
+    const row=document.createElement('article');row.className='telemetry-row';
+    const title=document.createElement('b'),meta=document.createElement('small'),detail=document.createElement('span');
+    const name=item.item?.name||({school:'学习',work:'打工',adventure:'冒险'}[item.kind]||item.kind||'任务');
+    title.textContent=`${name}${item.attribute?` · ${({physical:'力量',culture:'智力',art:'魅力'})[item.attribute]||item.attribute}`:''}`;
+    meta.textContent=[item.kind,item.elapsedSeconds?`${item.elapsedSeconds}s`:'耗时未知',item.item?.reward||'收益未知'].filter(Boolean).join(' · ');
+    detail.textContent=formatAttributeDelta(item.delta);
+    row.append(title,meta,detail);root.append(row);
   }
 }
 function renderCareerTree(careers){
@@ -266,11 +294,18 @@ function render(state){
   const inv=state.inventory||{};text('biscuits',inv.biscuits);text('shrimp',inv.shrimp);text('soap',inv.soap);text('bath-ball',inv.bathBall);
   const counts=state.progress?.counts||{};for(const key of ['school','work','adventure','feed','wash','visitFriend','visitStranger','careOther'])text(`count-${key}`,counts[key]||0);
   text('daily-experience',state.progress?.dailyExperienceGain||0);
+  renderTelemetry(state.progress||{});
   const config=state.config||{},rotation=state.progress?.schoolRotationIndex||0;
   const order=['physical','culture','art'],names={physical:'力量',culture:'智力',art:'魅力'};
   const base=Math.max(0,order.indexOf(config.schoolAttribute));
-  const active=config.schoolRotationEnabled?order[(base+rotation)%3]:config.schoolAttribute;
-  text('school-rotation-status',`当前学习属性：${names[active]||'--'}${config.schoolRotationEnabled?`（每 ${config.schoolRotationEvery} 次轮换）`:'（固定）'}`);
+  const values=state.values||{};
+  const keys={physical:'strength',culture:'intelligence',art:'charm'};
+  const mode=config.schoolSelectionMode||'lowest';
+  const active=mode==='lowest'
+    ? order.slice().sort((a,b)=>Number(values[keys[a]]??Number.MAX_SAFE_INTEGER)-Number(values[keys[b]]??Number.MAX_SAFE_INTEGER))[0]
+    : mode==='rotation' ? order[(base+rotation)%3] : config.schoolAttribute;
+  const modeLabel={lowest:'动态补最低属性',rotation:`每 ${config.schoolRotationEvery} 次轮换`,fixed:'固定属性'}[mode]||mode;
+  text('school-rotation-status',`当前学习属性：${names[active]||'--'}（${modeLabel}）`);
   text('logs',compactLogs(state.logs).join('\n')||'尚无日志');fillForm(config);renderMedals(profile.medals||[]);renderInteractions(state.interactions||[]);renderAssetPanels();applyControlState();
 }
 async function load(){
@@ -334,6 +369,7 @@ $('account-visibility').onclick=()=>{accountVisible=!accountVisible;renderAccoun
 form.elements.courseSubEvent.addEventListener('change',renderAssetPanels);
 form.elements.workJobSubEvent.addEventListener('change',renderAssetPanels);
 form.elements.schoolAttribute.addEventListener('change',renderAssetPanels);
+form.elements.schoolSelectionMode.addEventListener('change',renderAssetPanels);
 form.elements.schoolRotationEnabled.addEventListener('change',renderAssetPanels);
 form.elements.adventureOption.addEventListener('change',renderAssetPanels);
 const markFormDirty=()=>{formDirty=true;$('save').textContent='保存设置（未保存）'};

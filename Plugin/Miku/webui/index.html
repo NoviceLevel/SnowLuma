@@ -60,6 +60,11 @@
         <div class="counts"><span>学习 <b id="count-school">0</b></span><span>打工 <b id="count-work">0</b></span><span>冒险 <b id="count-adventure">0</b></span><span>喂食 <b id="count-feed">0</b></span><span>洗澡 <b id="count-wash">0</b></span><span>今日经验 <b id="daily-experience">0</b></span><span>好友走访 <b id="count-visitFriend">0</b></span><span>陌生人走访 <b id="count-visitStranger">0</b></span><span>照顾别人 <b id="count-careOther">0</b></span></div>
       </article>
 
+      <article id="telemetry-panel" class="panel span2 hidden">
+        <div class="title"><div><h2>成长遥测</h2><p>记录任务结算前后的属性变化、实际耗时和目录收益，用于后续优化培训策略</p></div><span id="telemetry-summary" class="pill"></span></div>
+        <div id="telemetry" class="telemetry-list"></div>
+      </article>
+
       <article id="medals-panel" class="panel span2 hidden"><div class="title"><div><h2>我的徽章</h2><p>展示服务器返回的全部徽章、获得状态与佩戴状态</p></div><span id="medal-count" class="pill"></span></div><div id="medals" class="medals"></div></article>
 
       <article id="interactions-panel" class="panel span2 hidden"><div class="title"><div><h2>互动消息</h2><p>服务器返回的最近互动记录，仅作只读展示</p></div><span id="interaction-count" class="pill"></span></div><div id="interactions" class="interactions"></div></article>
@@ -72,6 +77,10 @@
       <article class="panel span2">
         <div class="title settings-title"><div><h2>托管设置</h2><p>配置保存在 Miku 独立组件中</p></div><button id="save">保存设置</button></div>
         <form id="settings">
+          <fieldset><legend>培训策略</legend>
+            <label>属性策略<select name="schoolSelectionMode"><option value="lowest">动态补最低属性</option><option value="rotation">轮换三项属性</option><option value="fixed">固定属性</option></select></label>
+            <p>动态模式会根据当前力量、智力、魅力的缺口选择下一项课程。</p>
+          </fieldset>
           <fieldset><legend>安全与轮询</legend>
             <label class="check"><input name="safeMode" type="checkbox">安全模式（只读）</label>
             <label class="check"><input name="autoStart" type="checkbox">启动时自动托管</label>
@@ -93,9 +102,9 @@
           <fieldset><legend>学习</legend>
             <label class="check"><input name="schoolEnabled" type="checkbox">启用</label>
             <label>属性<select name="schoolAttribute"><option value="physical">力量</option><option value="culture">智力</option><option value="art">魅力</option></select></label>
-            <label class="check"><input name="schoolRotationEnabled" type="checkbox">定期轮换三种属性</label>
+            <label class="check"><input name="schoolRotationEnabled" type="checkbox">轮换模式启用周期轮换</label>
             <label>每完成几次轮换<input name="schoolRotationEvery" type="number" min="1"></label>
-            <p id="school-rotation-status">当前学习属性：--</p><p>轮换开启时自动选当前属性的最高效率课程。</p>
+            <p id="school-rotation-status">当前学习属性：--</p><p>动态模式补最低属性；轮换或固定模式可按需要切换。</p>
             <label>课程<select name="courseSubEvent"><option value="0">自动最高效率</option></select></label>
             <div id="course-preview" class="catalog-preview"><img alt="课程素材" width="42" height="42"><span><b>自动选择课程</b><small>等待目录同步</small></span></div>
           </fieldset>

@@ -248,6 +248,20 @@ dd { max-width: 280px; margin: 0; overflow: hidden; color: #3d374f; font-size: 1
 .interaction b { color: #443a58; font-size: 12px; }
 .interaction span { color: #8a8298; font-size: 9px; text-align: right; }
 .interaction p { margin: 4px 0 0; color: #645b72; font-size: 11px; line-height: 1.45; }
+.telemetry-list { display: grid; gap: 6px; }
+.telemetry-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.5fr);
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid #ebe6f2;
+  border-radius: 8px;
+  background: #fcfaff;
+}
+.telemetry-row b { min-width: 0; overflow: hidden; color: #443a58; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.telemetry-row small { min-width: 0; overflow: hidden; color: #8a8298; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.telemetry-row span { color: #187d53; font-size: 10px; font-weight: 700; text-align: right; }
 .career-tree { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
 .career-branch { min-width: 0; padding: 9px 10px; border: 1px solid #e7e1ef; border-radius: 10px; background: linear-gradient(145deg, #fff, #faf8ff); }
 .career-branch h3 { margin: 0; color: #473e59; font-size: 13px; }
@@ -367,6 +381,8 @@ dialog p { text-align: center; font-size: 12px; font-weight: 700; }
   .hero-status { grid-column: span 2; grid-row: 2; display: flex; justify-content: space-between; width: 100%; }
   .grid, form { grid-template-columns: 1fr; }
   .career-tree { grid-template-columns: 1fr; }
+  .telemetry-row { grid-template-columns: 1fr 1fr; }
+  .telemetry-row span { grid-column: span 2; text-align: left; }
   .span2, fieldset.settings-wide { grid-column: auto; }
   fieldset.settings-wide { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .settings-wide p { grid-column: span 2; }

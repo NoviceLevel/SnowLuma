@@ -11,6 +11,7 @@ import {
   createWebServer,
   normalizeConfig,
   resolveStaticAssetPath,
+  selectSchoolAttribute,
 } from '../index.mjs';
 import { configuredAccounts } from '../multi.mjs';
 
@@ -22,6 +23,7 @@ describe('Miku configuration and persistence', () => {
     assert.equal(DEFAULT_CONFIG.safeMode, false);
     assert.equal(DEFAULT_CONFIG.coinThreshold, 0);
     assert.equal(DEFAULT_CONFIG.schoolRotationEnabled, true);
+    assert.equal(DEFAULT_CONFIG.schoolSelectionMode, 'lowest');
     assert.equal(DEFAULT_CONFIG.adventureEnabled, false);
     assert.equal(normalizeConfig({ intervalSeconds: 1 }).intervalSeconds, 3);
   });
@@ -34,6 +36,22 @@ describe('Miku configuration and persistence', () => {
     assert.equal(store.snapshot().counts.school, 0);
     const files = await readdir(directory);
     assert.ok(files.some((file) => file.startsWith('daily-progress.json.corrupt-')));
+  });
+
+  test('selects the lowest live attribute in adaptive mode', () => {
+    const config = { ...DEFAULT_CONFIG, schoolSelectionMode: 'lowest', schoolAttribute: 'physical' };
+    assert.equal(selectSchoolAttribute(config, { strength: 236, intelligence: 334, charm: 302 }), 'physical');
+    assert.equal(selectSchoolAttribute(config, { strength: 90, intelligence: 40, charm: 70 }), 'culture');
+  });
+
+  test('records bounded task telemetry', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'miku-telemetry-'));
+    const store = new ProgressStore(path.join(directory, 'daily-progress.json'));
+    for (let index = 0; index < 105; index += 1) {
+      store.recordTelemetry({ kind: 'school', status: 'settled', index });
+    }
+    assert.equal(store.snapshot().telemetry.length, 100);
+    assert.equal(store.snapshot().telemetry[0].index, 5);
   });
 });
 
