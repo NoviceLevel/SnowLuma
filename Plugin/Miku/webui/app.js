@@ -94,7 +94,7 @@ function titleClock(seconds){
 function updateDocumentTitle(){
   const account=latestState.account||{};
   const uin=String(account.uin||'');
-  const accountLabel=uin?`QQ ${uin.slice(-4)}`:'';
+  const accountLabel=uin?`QQ${uin.slice(-4)}`:'';
   const story=latestState.story||{};
   let activity='';
   if(story.storyId&&!story.finished){
@@ -107,7 +107,7 @@ function updateDocumentTitle(){
   }else{
     activity='空闲';
   }
-  document.title=[baseDocumentTitle,accountLabel,activity].filter(Boolean).join(' · ');
+  document.title=[activity,accountLabel].filter(Boolean).join(' · ')||baseDocumentTitle;
 }
 function toast(message){text('toast',message);$('toast').classList.add('show');setTimeout(()=>$('toast').classList.remove('show'),1800)}
 function showError(message){text('error',message);$('error').classList.toggle('hidden',!message)}
