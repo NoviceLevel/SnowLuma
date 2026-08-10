@@ -103,10 +103,10 @@ function SectionHeader({ title, description, badge }: { title: string; descripti
 
 function MetricCard({ label, value, detail, badge, icon }: { label: string; value: React.ReactNode; detail?: React.ReactNode; badge?: React.ReactNode; icon?: React.ReactNode }) {
   return (
-    <LayerCard className="min-w-0">
-      <LayerCard.Primary className="flex min-h-24 flex-col justify-between gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <Text size="xs" variant="secondary">{label}</Text>
+    <LayerCard className="h-full min-w-0">
+      <LayerCard.Primary className="flex h-full min-h-24 flex-col justify-between gap-2">
+        <div className="flex min-h-6 items-center justify-between gap-2">
+          <Text size="xs" variant="secondary" truncate>{label}</Text>
           {badge || icon}
         </div>
         <Text as="span" variant="heading2">{value}</Text>
@@ -315,7 +315,6 @@ function App() {
                 <Button variant="ghost" size="sm" shape="square" aria-label={accountVisible ? '隐藏完整账号信息' : '显示完整账号信息'} onClick={() => setAccountVisible((value) => !value)}>{accountVisible ? <EyeSlash /> : <Eye />}</Button>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Badge variant="purple">等级 {profile.level ? `Lv.${profile.level}` : '--'}</Badge>
                 <Badge variant="neutral">生日 {profileDate(profile.birthdayAt)}</Badge>
                 <Badge variant="neutral">性别 {profile.gender || '--'}</Badge>
                 <Badge variant="neutral">物种 {profile.species || '--'}</Badge>
@@ -358,7 +357,7 @@ function App() {
             <Text as="h2" variant="heading3">成长训练</Text>
             <Badge variant="purple">当前学习：{attributeNames[targetAttribute] || '--'}（{modeLabel}）</Badge>
           </div>
-          <Grid variant="1-2-4up" gap="sm">
+          <Grid variant="6up" gap="sm">
             {(['strength', 'intelligence', 'charm'] as const).map((key) => {
               const attribute = ({ strength: 'physical', intelligence: 'culture', charm: 'art' })[key];
               const gain = attribute === targetAttribute ? expectedGain(expectedItem, targetAttribute) ?? 0 : 0;
@@ -366,6 +365,8 @@ function App() {
               return <GridItem key={key}><MetricCard label={`${label} · 下次训练`} value={`${gain >= 0 ? '+' : ''}${formatNumber(gain)}`} detail={`当前 ${formatNumber(values[key])}`} badge={<Badge variant={({ strength: 'red', intelligence: 'blue', charm: 'orange' } as const)[key]}>{({ strength: '力', intelligence: '智', charm: '魅' })[key]}</Badge>} /></GridItem>;
             })}
             <GridItem><MetricCard label="经验" value={profile.levelExperience ? `${formatNumber(profile.currentExperience)} / ${formatNumber(profile.levelExperience)}` : formatNumber(profile.currentExperience)} detail={profile.experienceRate ? `成长倍率 ×${formatNumber(profile.experienceRate, 1)}` : undefined} /></GridItem>
+            <GridItem><MetricCard label="等级" value={profile.level ? `Lv.${profile.level}` : '--'} detail={profile.levelExperience ? `升级还需 ${Math.max(0, Number(profile.levelExperience) - Number(profile.currentExperience || 0))}` : undefined} /></GridItem>
+            <GridItem><MetricCard label="今日经验" value={formatNumber(progress.dailyExperienceGain)} detail="今日累计获取" /></GridItem>
           </Grid>
         </section>
 
