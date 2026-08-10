@@ -194,27 +194,42 @@ function formatAttributeDelta(delta){
   const names={strength:'力量',intelligence:'智力',charm:'魅力'};
   return Object.entries(names).map(([key,label])=>`${label} ${Number(delta[key]||0)>=0?'+':''}${num(delta[key],1)}`).join(' · ');
 }
+function schoolAttributeForState(config={},values={},progress={}){
+  const order=['physical','culture','art'];
+  const keys={physical:'strength',culture:'intelligence',art:'charm'};
+  const mode=config.schoolSelectionMode||'lowest';
+  const base=Math.max(0,order.indexOf(config.schoolAttribute));
+  return mode==='lowest'
+    ? order.slice().sort((a,b)=>Number(values[keys[a]]??Number.MAX_SAFE_INTEGER)-Number(values[keys[b]]??Number.MAX_SAFE_INTEGER))[0]
+    : mode==='rotation' ? order[(base+Number(progress.schoolRotationIndex||0))%3] : config.schoolAttribute;
+}
+function expectedAttributeGain(item,attribute){
+  if(!item?.reward)return null;
+  const labels={physical:'力量',culture:'智力',art:'魅力'};
+  const label=labels[attribute];
+  const match=label&&String(item.reward).match(new RegExp(`${label}\\s*\\+?([0-9]+(?:\\.[0-9]+)?)`));
+  return match?Number(match[1]):null;
+}
 function renderAttributeTelemetry(progress={}){
   const keys=['strength','intelligence','charm'];
-  const settled=(progress.telemetry||[]).filter(item=>item&&item.status==='settled');
+  const config=latestConfig||{};
+  const values=latestState.values||{};
   const pending=progress.pending?.kind&&progress.pending.beforeValues?progress.pending:null;
+  const targetAttribute=pending?.kind==='school'&&pending.attribute
+    ? pending.attribute
+    : schoolAttributeForState(config,values,progress);
+  const expectedItem=pending?.kind==='school'&&pending.item?pending.item:selectedCatalogItem('school');
+  const expectedGain=expectedAttributeGain(expectedItem,targetAttribute);
+  const hasExpectedItem=Boolean(expectedItem?.reward);
   for(const key of keys){
     const element=$(`${key}-telemetry`);
     if(!element)continue;
-    const latest=[...settled].reverse().find(item=>item.delta&&Number.isFinite(Number(item.delta[key])));
-    const pendingKey={physical:'strength',culture:'intelligence',art:'charm'}[pending?.attribute];
+    const attribute={strength:'physical',intelligence:'culture',charm:'art'}[key];
     element.classList.remove('is-pending','is-gain','is-empty');
-    if(pendingKey===key){
-      element.textContent='本次任务待结算';
-      element.classList.add('is-pending');
-    }else if(latest){
-      const gain=Number(latest.delta[key]||0);
-      element.textContent=`最近获取 ${gain>=0?'+':''}${num(gain,1)}`;
-      element.classList.add(gain>0?'is-gain':'is-empty');
-    }else{
-      element.textContent='等待任务数据';
-      element.classList.add('is-empty');
-    }
+    if(!hasExpectedItem){element.textContent='等待目录同步';element.classList.add('is-empty');continue}
+    const gain=attribute===targetAttribute?expectedGain??0:0;
+    element.textContent=`下次获取 ${gain>=0?'+':''}${num(gain)}`;
+    element.classList.add(attribute===targetAttribute?'is-gain':'is-empty');
   }
 }
 function renderTelemetry(progress={}){
@@ -263,6 +278,7 @@ function renderAssetPanels(){
   const story=latestState.story||{},prefix=String(story.storyId||'').split('_',1)[0];
   const storyItem=prefix==='6100'?course:prefix==='6400'?work:prefix==='6700'?selectedCatalogItem('adventure'):null;
   setImage($('story-icon'),story?.storyId?storyItem?.iconUrl||'':'');
+  renderAttributeTelemetry(latestState.progress||{});
 }
 function compactLogs(lines){
   const output=[];
