@@ -245,6 +245,7 @@ function App() {
   const story = state.story || {};
   const automationRunning = Boolean(state.automationRunning);
   const connected = Boolean(state.connected);
+  const fatigueBenefitPercent = Number.isFinite(Number(state.fatigue?.benefitRate)) ? Math.round(Number(state.fatigue.benefitRate) * 100) : null;
   const jobs: CatalogOption[] = catalogs.careers.flatMap((career) => (career.jobs || []).map((job) => ({ ...job, careerName: job.careerName || career.name }) as CatalogOption));
   const order = ['physical', 'culture', 'art'];
   const valueKeys: AnyRecord = { physical: 'strength', culture: 'intelligence', art: 'charm' };
@@ -350,7 +351,7 @@ function App() {
             <GridItem><MetricCard label="体力" value={formatNumber(values.hunger)} /></GridItem>
             <GridItem><MetricCard label="清洁" value={formatNumber(values.clean)} /></GridItem>
             <GridItem><MetricCard label="综合" value={formatNumber(values.total)} /></GridItem>
-            <GridItem><MetricCard label="疲劳" value={state.fatigue?.fatigued === true ? '疲劳中' : state.fatigue?.fatigued === false ? '正常' : '未知'} detail={state.fatigue?.fatigued === true ? `${state.fatigue.tier} 小时档` : undefined} /></GridItem>
+            <GridItem><MetricCard label="疲劳" value={state.fatigue?.fatigued === true ? '疲劳中' : state.fatigue?.fatigued === false ? '正常' : '未知'} detail={state.fatigue?.fatigued === true ? `任务收益下降至 ${fatigueBenefitPercent ?? '--'}% · ${state.fatigue.tier} 小时档` : undefined} /></GridItem>
           </Grid>
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
