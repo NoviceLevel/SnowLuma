@@ -388,23 +388,27 @@ function App() {
             </LayerCard.Primary>
           </LayerCard>
 
-          <Grid variant="2up" gap="sm">
-            <GridItem><LayerCard className="h-full">
+          <Grid variant="2-1" gap="sm">
+            <GridItem><LayerCard>
               <SectionHeader title="当前任务" />
-              <LayerCard.Primary className="flex items-center gap-4">
-                {story.storyId ? (() => {
-                  const item = String(story.storyId).startsWith('6100') ? selectedCourse : String(story.storyId).startsWith('6400') ? selectedJob : selectedAdventure;
-                  return item?.iconUrl ? <img src={item.iconUrl} alt="任务素材" className="size-20 object-contain" /> : null;
-                })() : null}
-                <div className="min-w-0 flex-1"><DefinitionList items={[
-                  ['任务状态', story.storyId ? story.finished ? `${storyType(story)}（待结算）` : storyType(story) : '空闲'],
-                  ['Story ID', story.storyId || '无'],
-                  ['剩余 / 总时长', story.storyId ? `${duration(storyRemaining)} / ${duration(story.durationSeconds)}` : '--'],
-                ]} /></div>
+              <LayerCard.Primary>
+                <Grid variant="1-2" gap="sm">
+                  <GridItem className="flex items-center justify-center">
+                    {story.storyId ? (() => {
+                      const item = String(story.storyId).startsWith('6100') ? selectedCourse : String(story.storyId).startsWith('6400') ? selectedJob : selectedAdventure;
+                      return item?.iconUrl ? <img src={item.iconUrl} alt="任务素材" className="size-20 object-contain" /> : <Sparkle size={44} className="text-kumo-subtle" />;
+                    })() : <Sparkle size={44} className="text-kumo-subtle" />}
+                  </GridItem>
+                  <GridItem><DefinitionList items={[
+                    ['任务状态', story.storyId ? story.finished ? `${storyType(story)}（待结算）` : storyType(story) : '空闲'],
+                    ['Story ID', story.storyId || '无'],
+                    ['剩余 / 总时长', story.storyId ? `${duration(storyRemaining)} / ${duration(story.durationSeconds)}` : '--'],
+                  ]} /></GridItem>
+                </Grid>
               </LayerCard.Primary>
             </LayerCard></GridItem>
 
-            <GridItem><LayerCard className="h-full">
+            <GridItem><LayerCard>
               <SectionHeader title="背包" />
               <LayerCard.Primary><DefinitionList items={[
                 ['饼干', inventory.biscuits ?? '--'], ['虾仁', inventory.shrimp ?? '--'], ['香皂片', inventory.soap ?? '--'], ['沐浴球', inventory.bathBall ?? '--'],
