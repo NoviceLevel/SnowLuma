@@ -123,8 +123,8 @@ function normalizeConfig(input) {
   config.startConfirmSeconds = Math.max(5, Math.trunc(config.startConfirmSeconds));
   return config;
 }
-function isAutoPetId(arg1) {
-  return ["", "AUTO", "YOUR_PET_ID"].includes(String(arg1 ?? "").trim().toUpperCase());
+function isAutoPetId(petId) {
+  return ["", "AUTO", "YOUR_PET_ID"].includes(String(petId ?? "").trim().toUpperCase());
 }
 const EMPTY_DAILY_COUNTS = {
   school: 0,
@@ -138,16 +138,16 @@ const EMPTY_DAILY_COUNTS = {
   careOther: 0
 };
 function currentDateKey() {
-  const value2 = new Date();
-  return value2.getFullYear() + "-" + String(value2.getMonth() + 1).padStart(2, "0") + "-" + String(value2.getDate()).padStart(2, "0");
+  const date = new Date();
+  return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
 }
 function createDailyProgress() {
-  const value3 = {
+  const record = {
     ...EMPTY_DAILY_COUNTS
   };
   return {
     date: currentDateKey(),
-    counts: value3,
+    counts: record,
     history: [],
     pending: null,
     careBlocks: {},
@@ -172,11 +172,15 @@ function writeJsonAtomically(filePath, value) {
       if (!error || !["EEXIST", "EPERM"].includes(error.code)) {
         throw error;
       }
-      fs.rmSync(filePath, { force: true });
+      fs.rmSync(filePath, {
+        force: true
+      });
       fs.renameSync(tempPath, filePath);
     }
   } finally {
-    fs.rmSync(tempPath, { force: true });
+    fs.rmSync(tempPath, {
+      force: true
+    });
   }
 }
 function backupCorruptFile(filePath, error) {
@@ -190,45 +194,45 @@ function backupCorruptFile(filePath, error) {
   }
 }
 class ProgressStore {
-  constructor(arg12) {
-    const value8 = {
+  constructor(filePath) {
+    const mkdirOptions = {
       recursive: true
     };
-    this.filePath = arg12;
-    fs.mkdirSync(path.dirname(arg12), value8);
+    this.filePath = filePath;
+    fs.mkdirSync(path.dirname(filePath), mkdirOptions);
     try {
-      const value4 = JSON.parse(fs.readFileSync(arg12, "utf8"));
+      const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
       const {
-        pendingReturnVisits: value5,
-        ...value6
-      } = value4;
-      const value7 = {
-        ...(value6.counts ?? {})
+        pendingReturnVisits: pendingReturnVisits,
+        ...rest
+      } = parsed;
+      const record = {
+        ...(rest.counts ?? {})
       };
-      delete value7.returnVisit;
+      delete record.returnVisit;
       this.state = {
         ...createDailyProgress(),
-        ...value6,
+        ...rest,
         counts: {
           ...EMPTY_DAILY_COUNTS,
-          ...value7
+          ...record
         },
-        careBlocks: value6.careBlocks ?? {},
-        settledStoryIds: value6.settledStoryIds ?? [],
-        dismissedStoryIds: value6.dismissedStoryIds ?? [],
-        schoolRotationIndex: Math.max(0, Math.trunc(Number(value6.schoolRotationIndex) || 0)),
-        schoolRotationProgress: Math.max(0, Math.trunc(Number(value6.schoolRotationProgress) || 0)),
-        visitedTargetIds: Array.isArray(value6.visitedTargetIds) ? value6.visitedTargetIds.map(String).slice(-500) : [],
-        attributeBaseline: value6.attributeBaseline && typeof value6.attributeBaseline == "object" ? {
-          strength: Math.max(0, Number(value6.attributeBaseline.strength) || 0),
-          intelligence: Math.max(0, Number(value6.attributeBaseline.intelligence) || 0),
-          charm: Math.max(0, Number(value6.attributeBaseline.charm) || 0)
+        careBlocks: rest.careBlocks ?? {},
+        settledStoryIds: rest.settledStoryIds ?? [],
+        dismissedStoryIds: rest.dismissedStoryIds ?? [],
+        schoolRotationIndex: Math.max(0, Math.trunc(Number(rest.schoolRotationIndex) || 0)),
+        schoolRotationProgress: Math.max(0, Math.trunc(Number(rest.schoolRotationProgress) || 0)),
+        visitedTargetIds: Array.isArray(rest.visitedTargetIds) ? rest.visitedTargetIds.map(String).slice(-500) : [],
+        attributeBaseline: rest.attributeBaseline && typeof rest.attributeBaseline == "object" ? {
+          strength: Math.max(0, Number(rest.attributeBaseline.strength) || 0),
+          intelligence: Math.max(0, Number(rest.attributeBaseline.intelligence) || 0),
+          charm: Math.max(0, Number(rest.attributeBaseline.charm) || 0)
         } : null,
-        dailyExperienceGain: Math.max(0, Math.trunc(Number(value6.dailyExperienceGain) || 0)),
-        telemetry: Array.isArray(value6.telemetry) ? value6.telemetry.slice(-100) : []
+        dailyExperienceGain: Math.max(0, Math.trunc(Number(rest.dailyExperienceGain) || 0)),
+        telemetry: Array.isArray(rest.telemetry) ? rest.telemetry.slice(-100) : []
       };
     } catch (error) {
-      backupCorruptFile(arg12, error);
+      backupCorruptFile(filePath, error);
       this.state = createDailyProgress();
     }
     this.rollover();
@@ -238,8 +242,8 @@ class ProgressStore {
   save() {
     writeJsonAtomically(this.filePath, this.state);
   }
-  rollover(arg13 = currentDateKey()) {
-    if (this.state.date === arg13) {
+  rollover(arg = currentDateKey()) {
+    if (this.state.date === arg) {
       return false;
     } else {
       this.state.history.push({
@@ -252,7 +256,7 @@ class ProgressStore {
       this.state.history = this.state.history.slice(-30);
       this.state = {
         ...this.state,
-        date: arg13,
+        date: arg,
         counts: {
           ...EMPTY_DAILY_COUNTS
         },
@@ -270,39 +274,39 @@ class ProgressStore {
     this.rollover();
     return structuredClone(this.state);
   }
-  count(arg14) {
-    return this.snapshot().counts[arg14] ?? 0;
+  count(kind) {
+    return this.snapshot().counts[kind] ?? 0;
   }
-  increment(arg15) {
+  increment(kind) {
     this.rollover();
-    this.state.counts[arg15] = (this.state.counts[arg15] ?? 0) + 1;
+    this.state.counts[kind] = (this.state.counts[kind] ?? 0) + 1;
     this.save();
-    return this.state.counts[arg15];
+    return this.state.counts[kind];
   }
-  advanceSchoolRotation(arg16) {
+  advanceSchoolRotation(every) {
     this.increment("school");
     this.state.schoolRotationProgress += 1;
-    if (this.state.schoolRotationProgress >= Math.max(1, Math.trunc(arg16))) {
+    if (this.state.schoolRotationProgress >= Math.max(1, Math.trunc(every))) {
       this.state.schoolRotationIndex = (this.state.schoolRotationIndex + 1) % 3;
       this.state.schoolRotationProgress = 0;
     }
     this.save();
     return this.state.schoolRotationIndex;
   }
-  setPending(arg17, arg2 = "", metadata = {}) {
+  setPending(kind, arg = "", metadata = {}) {
     this.state.pending = {
-      kind: arg17,
+      kind: kind,
       createdAt: new Date().toISOString(),
-      confirmed: !!arg2,
-      storyId: arg2,
+      confirmed: !!arg,
+      storyId: arg,
       ...metadata
     };
     this.save();
   }
-  confirmPending(arg18) {
+  confirmPending(storyId) {
     if (this.state.pending) {
       this.state.pending.confirmed = true;
-      this.state.pending.storyId = arg18;
+      this.state.pending.storyId = storyId;
       delete this.state.pending.missingSince;
       this.save();
     }
@@ -325,88 +329,88 @@ class ProgressStore {
     }
   }
   clearPending() {
-    const value9 = this.state.pending;
+    const pending = this.state.pending;
     this.state.pending = null;
     this.save();
-    return value9;
+    return pending;
   }
-  storyWasSettled(arg19) {
-    return this.state.settledStoryIds.includes(arg19);
+  storyWasSettled(storyId) {
+    return this.state.settledStoryIds.includes(storyId);
   }
-  markStorySettled(arg110) {
-    if (!this.state.settledStoryIds.includes(arg110)) {
-      this.state.settledStoryIds.push(arg110);
+  markStorySettled(storyId) {
+    if (!this.state.settledStoryIds.includes(storyId)) {
+      this.state.settledStoryIds.push(storyId);
       this.state.settledStoryIds = this.state.settledStoryIds.slice(-100);
       this.save();
     }
   }
-  storyWasDismissed(arg111) {
-    return this.state.dismissedStoryIds.includes(arg111);
+  storyWasDismissed(storyId) {
+    return this.state.dismissedStoryIds.includes(storyId);
   }
-  dismissStory(arg112) {
-    if (!this.state.dismissedStoryIds.includes(arg112)) {
-      this.state.dismissedStoryIds.push(arg112);
+  dismissStory(storyId) {
+    if (!this.state.dismissedStoryIds.includes(storyId)) {
+      this.state.dismissedStoryIds.push(storyId);
       this.state.dismissedStoryIds = this.state.dismissedStoryIds.slice(-100);
       this.save();
     }
   }
-  setBlock(arg113, arg22, arg3) {
-    this.state.careBlocks[arg113] = {
-      reason: arg22,
-      until: Date.now() / 1000 + Math.max(0, arg3)
+  setBlock(key, reason, seconds) {
+    this.state.careBlocks[key] = {
+      reason: reason,
+      until: Date.now() / 1000 + Math.max(0, seconds)
     };
     this.save();
   }
-  activeBlock(arg114) {
-    const value10 = this.state.careBlocks[arg114];
-    if (value10) {
-      if (value10.until <= Date.now() / 1000) {
-        delete this.state.careBlocks[arg114];
+  activeBlock(key) {
+    const member = this.state.careBlocks[key];
+    if (member) {
+      if (member.until <= Date.now() / 1000) {
+        delete this.state.careBlocks[key];
         this.save();
         return null;
       } else {
         return {
-          ...value10
+          ...member
         };
       }
     } else {
       return null;
     }
   }
-  clearBlock(arg115) {
-    if (this.state.careBlocks[arg115]) {
-      delete this.state.careBlocks[arg115];
+  clearBlock(key) {
+    if (this.state.careBlocks[key]) {
+      delete this.state.careBlocks[key];
       this.save();
     }
   }
-  targetWasVisited(arg116) {
-    return this.snapshot().visitedTargetIds.includes(arg116);
+  targetWasVisited(targetId) {
+    return this.snapshot().visitedTargetIds.includes(targetId);
   }
-  markTargetVisited(arg117) {
-    if (!this.state.visitedTargetIds.includes(arg117)) {
-      this.state.visitedTargetIds.push(arg117);
+  markTargetVisited(targetId) {
+    if (!this.state.visitedTargetIds.includes(targetId)) {
+      this.state.visitedTargetIds.push(targetId);
       this.state.visitedTargetIds = this.state.visitedTargetIds.slice(-500);
       this.save();
     }
   }
-  recordAttributes(arg118) {
+  recordAttributes(values) {
     this.rollover();
-    const value13 = {
-      strength: Math.max(0, Number(arg118.strength) || 0),
-      intelligence: Math.max(0, Number(arg118.intelligence) || 0),
-      charm: Math.max(0, Number(arg118.charm) || 0)
+    const attributes = {
+      strength: Math.max(0, Number(values.strength) || 0),
+      intelligence: Math.max(0, Number(values.intelligence) || 0),
+      charm: Math.max(0, Number(values.charm) || 0)
     };
     if (!this.state.attributeBaseline) {
-      this.state.attributeBaseline = value13;
+      this.state.attributeBaseline = attributes;
       this.state.dailyExperienceGain = 0;
     } else {
-      const value11 = this.state.attributeBaseline;
-      const value12 = ["strength", "intelligence", "charm"];
-      if (value12.every(item2 => value13[item2] < value11[item2])) {
-        this.state.attributeBaseline = value13;
+      const attributeBaseline = this.state.attributeBaseline;
+      const list = ["strength", "intelligence", "charm"];
+      if (list.every(item => attributes[item] < attributeBaseline[item])) {
+        this.state.attributeBaseline = attributes;
         this.state.dailyExperienceGain = 0;
       } else {
-        this.state.dailyExperienceGain = value12.reduce((accumulator, item3) => accumulator + Math.max(0, value13[item3] - value11[item3]), 0);
+        this.state.dailyExperienceGain = list.reduce((accumulator, item) => accumulator + Math.max(0, attributes[item] - attributeBaseline[item]), 0);
       }
     }
     this.save();
@@ -422,164 +426,157 @@ class ProgressStore {
     this.save();
   }
 }
-const tt = 16384;
-const Mt = 16384;
-const Pt = 8000;
-const At = 120000;
-const Ct = 600000;
-const et = 15000;
-const st = [15000, 30000, 60000, 120000];
-function concatBytes(...arg119) {
-  const value14 = arg119.reduce((accumulator2, item4) => accumulator2 + item4.length, 0);
-  const value15 = new Uint8Array(value14);
-  let value16 = 0;
-  for (const items of arg119) {
-    value15.set(items, value16);
-    value16 += items.length;
+function concatBytes(...chunks) {
+  const totalLength = chunks.reduce((total, chunk) => total + chunk.length, 0);
+  const bytes = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
   }
-  return value15;
+  return bytes;
 }
-function encodeVarint(arg120) {
-  if (!Number.isSafeInteger(arg120)) {
-    throw new Error("varint 不是安全整数: " + arg120);
+function encodeVarint(temp) {
+  if (!Number.isSafeInteger(temp)) {
+    throw new Error("varint 不是安全整数: " + temp);
   }
-  let value18 = arg120 < 0 ? BigInt.asUintN(64, BigInt(arg120)) : BigInt(arg120);
-  const items2 = [];
+  let temp_2 = temp < 0 ? BigInt.asUintN(64, BigInt(temp)) : BigInt(temp);
+  const list = [];
   do {
-    const value17 = Number(value18 & 0x7fn);
-    value18 >>= 0x7n;
-    items2.push(value17 | (value18 ? 128 : 0));
-  } while (value18);
-  return Uint8Array.from(items2);
+    const number = Number(temp_2 & 0x7fn);
+    temp_2 >>= 0x7n;
+    list.push(number | (temp_2 ? 128 : 0));
+  } while (temp_2);
+  return Uint8Array.from(list);
 }
-function encodeVarintField(arg121, arg23) {
-  return concatBytes(encodeVarint(arg121 << 3), encodeVarint(arg23));
+function encodeVarintField(fieldNumber, temp) {
+  return concatBytes(encodeVarint(fieldNumber << 3), encodeVarint(temp));
 }
-function encodeBytesField(arg122, items3) {
-  return concatBytes(encodeVarint(arg122 << 3 | 2), encodeVarint(items3.length), items3);
+function encodeBytesField(fieldNumber, bytes) {
+  return concatBytes(encodeVarint(fieldNumber << 3 | 2), encodeVarint(bytes.length), bytes);
 }
-function encodeStringField(arg123, arg24) {
-  return encodeBytesField(arg123, new TextEncoder().encode(arg24));
+function encodeStringField(fieldNumber, text) {
+  return encodeBytesField(fieldNumber, new TextEncoder().encode(text));
 }
-function decodeVarint(items4, arg25) {
-  let value21 = arg25;
-  let value22 = 0x0n;
-  let value23 = 0x0n;
-  while (value21 < items4.length) {
-    const value20 = items4[value21++];
-    value22 |= BigInt(value20 & 127) << value23;
-    if ((value20 & 128) === 0) {
-      const value19 = Number(value22);
-      if (!Number.isSafeInteger(value19)) {
+function decodeVarint(bytes, offset) {
+  let offset_2 = offset;
+  let temp = 0x0n;
+  let temp_2 = 0x0n;
+  while (offset_2 < bytes.length) {
+    const member = bytes[offset_2++];
+    temp |= BigInt(member & 127) << temp_2;
+    if ((member & 128) === 0) {
+      const number = Number(temp);
+      if (!Number.isSafeInteger(number)) {
         throw new Error("protobuf varint 超出安全整数范围");
       }
-      return [value19, value21];
+      return [number, offset_2];
     }
-    value23 += 0x7n;
-    if (value23 > 0x46n) {
+    temp_2 += 0x7n;
+    if (temp_2 > 0x46n) {
       throw new Error("protobuf varint 太长");
     }
   }
   throw new Error("protobuf varint 被截断");
 }
-function parseProtobufFields(items6) {
-  const value30 = new Map();
-  let value31 = 0;
-  while (value31 < items6.length) {
-    let value25;
-    [value25, value31] = decodeVarint(items6, value31);
-    const value26 = value25 >>> 3;
-    const value27 = value25 & 7;
-    if (!value26) {
+function parseProtobufFields(bytes) {
+  const temp_4 = new Map();
+  let number_3 = 0;
+  while (number_3 < bytes.length) {
+    let temp_2;
+    [temp_2, number_3] = decodeVarint(bytes, number_3);
+    const number = temp_2 >>> 3;
+    const number_2 = temp_2 & 7;
+    if (!number) {
       throw new Error("protobuf 字段号为 0");
     }
-    let value28;
-    if (value27 === 0) {
-      [value28, value31] = decodeVarint(items6, value31);
-    } else if (value27 === 1) {
-      if (value31 + 8 > items6.length) {
+    let temp_3;
+    if (number_2 === 0) {
+      [temp_3, number_3] = decodeVarint(bytes, number_3);
+    } else if (number_2 === 1) {
+      if (number_3 + 8 > bytes.length) {
         throw new Error("fixed64 被截断");
       }
-      value28 = items6.slice(value31, value31 + 8);
-      value31 += 8;
-    } else if (value27 === 2) {
-      let value24;
-      [value24, value31] = decodeVarint(items6, value31);
-      if (value31 + value24 > items6.length) {
+      temp_3 = bytes.slice(number_3, number_3 + 8);
+      number_3 += 8;
+    } else if (number_2 === 2) {
+      let temp;
+      [temp, number_3] = decodeVarint(bytes, number_3);
+      if (number_3 + temp > bytes.length) {
         throw new Error("length-delimited 字段被截断");
       }
-      value28 = items6.slice(value31, value31 + value24);
-      value31 += value24;
-    } else if (value27 === 5) {
-      if (value31 + 4 > items6.length) {
+      temp_3 = bytes.slice(number_3, number_3 + temp);
+      number_3 += temp;
+    } else if (number_2 === 5) {
+      if (number_3 + 4 > bytes.length) {
         throw new Error("fixed32 被截断");
       }
-      value28 = items6.slice(value31, value31 + 4);
-      value31 += 4;
+      temp_3 = bytes.slice(number_3, number_3 + 4);
+      number_3 += 4;
     } else {
-      throw new Error("暂不支持 protobuf wire type " + value27);
+      throw new Error("暂不支持 protobuf wire type " + number_2);
     }
-    const items5 = value30.get(value26) ?? [];
-    const value29 = {
-      wireType: value27,
-      value: value28
+    const list = temp_4.get(number) ?? [];
+    const record = {
+      wireType: number_2,
+      value: temp_3
     };
-    items5.push(value29);
-    value30.set(value26, items5);
+    list.push(record);
+    temp_4.set(number, list);
   }
-  return value30;
+  return temp_4;
 }
-function getProtobufFields(arg124, arg26) {
-  return arg124.get(arg26) ?? [];
+function getProtobufFields(fields, fieldNumber) {
+  return fields.get(fieldNumber) ?? [];
 }
-function getVarintField(arg125, arg27, arg32 = 0) {
-  const field = arg125.get(arg27)?.[0];
+function getVarintField(fields, fieldNumber, arg = 0) {
+  const field = fields.get(fieldNumber)?.[0];
   if (field?.wireType === 0) {
     return Number(field.value);
   } else {
-    return arg32;
+    return arg;
   }
 }
-function getBytesField(arg126, arg28) {
-  const field2 = arg126.get(arg28)?.[0];
-  if (field2?.wireType === 2) {
-    return field2.value;
+function getBytesField(fields, fieldNumber) {
+  const field = fields.get(fieldNumber)?.[0];
+  if (field?.wireType === 2) {
+    return field.value;
   } else {
     return new Uint8Array();
   }
 }
-function getStringField(arg127, arg29, arg33 = "") {
-  const items7 = getBytesField(arg127, arg29);
-  if (items7.length) {
-    return new TextDecoder().decode(items7);
+function getStringField(fields, fieldNumber, arg = "") {
+  const fieldBytes = getBytesField(fields, fieldNumber);
+  if (fieldBytes.length) {
+    return new TextDecoder().decode(fieldBytes);
   } else {
-    return arg33;
+    return arg;
   }
 }
-function getFloatField(arg128, arg210, arg34 = 0) {
-  const field3 = arg128.get(arg210)?.[0];
-  if (field3?.wireType !== 5) {
-    return arg34;
+function getFloatField(fields, fieldNumber, arg = 0) {
+  const field = fields.get(fieldNumber)?.[0];
+  if (field?.wireType !== 5) {
+    return arg;
   }
-  const value32 = field3.value;
-  return new DataView(value32.buffer, value32.byteOffset, 4).getFloat32(0, true);
+  const member = field.value;
+  return new DataView(member.buffer, member.byteOffset, 4).getFloat32(0, true);
 }
-function buildPacketEnvelope(arg129, arg211, arg35) {
-  return concatBytes(encodeVarintField(1, arg129), encodeVarintField(2, arg211), encodeBytesField(4, arg35), encodeVarintField(12, 1));
+function buildPacketEnvelope(command, subCommand, body) {
+  return concatBytes(encodeVarintField(1, command), encodeVarintField(2, subCommand), encodeBytesField(4, body), encodeVarintField(12, 1));
 }
-function bytesToHex(arg130) {
-  return Buffer.from(arg130).toString("hex");
+function bytesToHex(bytes) {
+  return Buffer.from(bytes).toString("hex");
 }
-function hexToBytes(arg131) {
-  if (!/^(?:[0-9a-fA-F]{2})*$/.test(arg131)) {
+function hexToBytes(hex) {
+  if (!/^(?:[0-9a-fA-F]{2})*$/.test(hex)) {
     throw new Error("响应不是有效十六进制");
   }
-  return new Uint8Array(Buffer.from(arg131, "hex"));
+  return new Uint8Array(Buffer.from(hex, "hex"));
 }
 class QQPetError extends Error {
-  constructor(arg132, arg212 = "") {
-    super(arg132);
-    this.code = arg212;
+  constructor(input, arg = "") {
+    super(input);
+    this.code = arg;
   }
 }
 function isCareerRequirementError(error) {
@@ -608,22 +605,22 @@ const PACKETS = {
   medalGallery: ["OidbSvcTrpcTcp.0x9ac3_0", 39619, 0],
   interactionHistory: ["OidbSvcTrpcTcp.0x994d_1", 39245, 1]
 };
-function yt(arg133) {
-  if (typeof arg133 == "string") {
-    return arg133;
+function extractPacketHex(payload) {
+  if (typeof payload == "string") {
+    return payload;
   }
-  if (!arg133 || typeof arg133 != "object") {
+  if (!payload || typeof payload != "object") {
     return "";
   }
-  const value36 = arg133;
-  for (const value35 of ["data", "packet", "hex"]) {
-    const value33 = value36[value35];
-    if (typeof value33 == "string" && /^(?:[0-9a-fA-F]{2})+$/.test(value33)) {
-      return value33;
+  const payload_2 = payload;
+  for (const temp of ["data", "packet", "hex"]) {
+    const member = payload_2[temp];
+    if (typeof member == "string" && /^(?:[0-9a-fA-F]{2})+$/.test(member)) {
+      return member;
     }
-    const value34 = yt(value33);
-    if (value34) {
-      return value34;
+    const packetHex = extractPacketHex(member);
+    if (packetHex) {
+      return packetHex;
     }
   }
   return "";
@@ -636,72 +633,72 @@ function parseRewardAmount(rewardText) {
   const first = text.match(new RegExp(numberPattern))?.[1];
   return Number(total ?? gold ?? first ?? 0);
 }
-function _(...arg135) {
-  for (const value42 of arg135) {
-    const value41 = value42.match(/https:\/\/[^\s\])]+\.(?:png|webp|jpe?g|gif)/i)?.[0];
-    if (value41) {
-      return value41;
+function extractImageUrl(...arg) {
+  for (const temp of arg) {
+    const member = temp.match(/https:\/\/[^\s\])]+\.(?:png|webp|jpe?g|gif)/i)?.[0];
+    if (member) {
+      return member;
     }
   }
   return "";
 }
-function Vt(arg136) {
-  return arg136.replace(/!?\[[^\]]*\]\([^)]*\)/g, " ").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+function stripMarkdown(text) {
+  return text.replace(/!?\[[^\]]*\]\([^)]*\)/g, " ").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
-function ot(arg137, arg213 = true, arg36) {
-  const value43 = parseProtobufFields(arg137);
+function parseMedal(bytes, arg = true, equipped) {
+  const fields = parseProtobufFields(bytes);
   return {
-    id: getVarintField(value43, 1),
-    name: getStringField(value43, 2),
-    progress: getStringField(value43, 3),
-    acquired: arg213,
-    category: getStringField(value43, 5),
-    imageUrl: _(getStringField(value43, 7)),
-    requirement: getStringField(value43, 8),
-    description: getStringField(value43, 9),
-    ...(arg36 === undefined ? {} : {
-      equipped: arg36
+    id: getVarintField(fields, 1),
+    name: getStringField(fields, 2),
+    progress: getStringField(fields, 3),
+    acquired: arg,
+    category: getStringField(fields, 5),
+    imageUrl: extractImageUrl(getStringField(fields, 7)),
+    requirement: getStringField(fields, 8),
+    description: getStringField(fields, 9),
+    ...(equipped === undefined ? {} : {
+      equipped: equipped
     })
   };
 }
-function Qt(arg138) {
+function parseInteractionText(raw) {
   try {
-    const items8 = JSON.parse(arg138);
-    if (Array.isArray(items8)) {
-      const value45 = items8.map(item5 => {
-        if (!item5 || typeof item5 != "object") {
+    const list = JSON.parse(raw);
+    if (Array.isArray(list)) {
+      const trimmed = list.map(item => {
+        if (!item || typeof item != "object") {
           return "";
         }
-        const value44 = item5.text;
-        if (typeof value44 == "string") {
-          return value44;
+        const text = item.text;
+        if (typeof text == "string") {
+          return text;
         } else {
           return "";
         }
       }).join("").trim();
-      if (value45) {
-        return value45.replace(/^\d{1,2}:\d{2}\s*/, "");
+      if (trimmed) {
+        return trimmed.replace(/^\d{1,2}:\d{2}\s*/, "");
       }
     }
   } catch {}
-  return arg138.trim();
+  return raw.trim();
 }
-function H(arg139, arg214 = {}) {
-  const value46 = parseProtobufFields(arg139);
-  const value47 = Vt(getStringField(value46, 8));
+function parseCatalogItem(bytes, arg = {}) {
+  const fields = parseProtobufFields(bytes);
+  const plainText = stripMarkdown(getStringField(fields, 8));
   return {
-    name: getStringField(value46, 1),
-    subEventType: getVarintField(value46, 52),
-    cost: getStringField(value46, 6),
-    duration: getStringField(value46, 7),
-    reward: arg214.careerType && /^\d+(?:\.\d+)?$/.test(value47) ? "金币 " + value47 : value47,
-    description: getStringField(value46, 10) || getStringField(value46, 14),
-    canDo: !!getVarintField(value46, 50),
-    unavailableReason: getStringField(value46, 51),
-    warning: getStringField(value46, 17),
-    iconUrl: _(getStringField(value46, 2)),
-    rewardIconUrl: _(getStringField(value46, 8), getStringField(value46, 12), getStringField(value46, 6)),
-    ...arg214
+    name: getStringField(fields, 1),
+    subEventType: getVarintField(fields, 52),
+    cost: getStringField(fields, 6),
+    duration: getStringField(fields, 7),
+    reward: arg.careerType && /^\d+(?:\.\d+)?$/.test(plainText) ? "金币 " + plainText : plainText,
+    description: getStringField(fields, 10) || getStringField(fields, 14),
+    canDo: !!getVarintField(fields, 50),
+    unavailableReason: getStringField(fields, 51),
+    warning: getStringField(fields, 17),
+    iconUrl: extractImageUrl(getStringField(fields, 2)),
+    rewardIconUrl: extractImageUrl(getStringField(fields, 8), getStringField(fields, 12), getStringField(fields, 6)),
+    ...arg
   };
 }
 function parseDurationSeconds(durationText) {
@@ -767,103 +764,103 @@ function parseFatigueStatus(warningText) {
   return rested;
 }
 class QQPetApi {
-  constructor(arg143, arg216) {
-    this.ctx = arg143;
-    this.petId = arg216;
+  constructor(ctx, petId) {
+    this.ctx = ctx;
+    this.petId = petId;
   }
   otherPetMobileAvailable = null;
-  async sendPacket(arg144, arg217) {
-    const [value64] = arg144;
-    let value65;
+  async sendPacket(packet, body) {
+    const [commandName] = packet;
+    let temp;
     try {
-      value65 = await this.ctx.actions.call("send_packet", {
-        cmd: value64,
-        data: bytesToHex(arg217)
+      temp = await this.ctx.actions.call("send_packet", {
+        cmd: commandName,
+        data: bytesToHex(body)
       }, this.ctx.adapterName, this.ctx.pluginManager.config);
-    } catch (value62) {
-      throw new QQPetError("OneBot send_packet 失败：" + String(value62));
+    } catch (error) {
+      throw new QQPetError("OneBot send_packet 失败：" + String(error));
     }
-    const value66 = yt(value65);
-    if (!value66) {
-      throw new QQPetError(value64 + " 返回空响应或未知响应结构");
+    const packetHex = extractPacketHex(temp);
+    if (!packetHex) {
+      throw new QQPetError(commandName + " 返回空响应或未知响应结构");
     }
     try {
-      return hexToBytes(value66);
-    } catch (value63) {
-      throw new QQPetError(value64 + " 响应无法解析：" + String(value63));
+      return hexToBytes(packetHex);
+    } catch (error_2) {
+      throw new QQPetError(commandName + " 响应无法解析：" + String(error_2));
     }
   }
-  async sendOidb(arg145, arg218) {
-    const [value67, value68, value69] = arg145;
-    const value70 = await this.sendPacket(arg145, buildPacketEnvelope(value68, value69, arg218));
-    const value71 = parseProtobufFields(value70);
-    const value72 = getVarintField(value71, 1) === value68 && getVarintField(value71, 2) === value69;
-    const value73 = value72 ? getVarintField(value71, 3) : 0;
-    if (value73) {
-      throw new QQPetError(value67 + " OIDB errorCode=" + value73);
+  async sendOidb(packet, body) {
+    const [commandName, command, subCommand] = packet;
+    const temp = await this.sendPacket(packet, buildPacketEnvelope(command, subCommand, body));
+    const fields = parseProtobufFields(temp);
+    const temp_2 = getVarintField(fields, 1) === command && getVarintField(fields, 2) === subCommand;
+    const temp_3 = temp_2 ? getVarintField(fields, 3) : 0;
+    if (temp_3) {
+      throw new QQPetError(commandName + " OIDB errorCode=" + temp_3);
     }
     return {
-      command: value68,
-      subCommand: value69,
-      errorCode: value73,
-      body: value72 ? getBytesField(value71, 4) : value70,
-      raw: value70
+      command: command,
+      subCommand: subCommand,
+      errorCode: temp_3,
+      body: temp_2 ? getBytesField(fields, 4) : temp,
+      raw: temp
     };
   }
   async queryOwnPetProfile() {
-    const [value82, value83, value84] = PACKETS.ownProfile;
-    const value85 = await this.sendPacket(PACKETS.ownProfile, buildPacketEnvelope(value83, value84, new Uint8Array()));
-    let value86 = parseProtobufFields(value85);
-    if (getVarintField(value86, 1) === value83 && getVarintField(value86, 2) === value84) {
-      const value74 = getVarintField(value86, 3);
-      if (value74) {
-        throw new QQPetError(value82 + " OIDB errorCode=" + value74);
+    const [commandName, command, subCommand] = PACKETS.ownProfile;
+    const temp_5 = await this.sendPacket(PACKETS.ownProfile, buildPacketEnvelope(command, subCommand, new Uint8Array()));
+    let fields = parseProtobufFields(temp_5);
+    if (getVarintField(fields, 1) === command && getVarintField(fields, 2) === subCommand) {
+      const varint = getVarintField(fields, 3);
+      if (varint) {
+        throw new QQPetError(commandName + " OIDB errorCode=" + varint);
       }
-      value86 = parseProtobufFields(getBytesField(value86, 4));
+      fields = parseProtobufFields(getBytesField(fields, 4));
     }
-    const items12 = getBytesField(value86, 1);
-    const value87 = items12.length ? parseProtobufFields(items12) : value86;
-    const value88 = getStringField(value87, 8).trim();
-    if (value88) {
-      const items9 = getBytesField(value87, 13);
-      const value75 = items9.length ? parseProtobufFields(items9) : new Map();
-      const items10 = getBytesField(value87, 14);
-      const value76 = items10.length ? parseProtobufFields(items10) : new Map();
-      const value77 = getVarintField(value87, 6);
-      const value78 = getProtobufFields(value76, 1).filter(item6 => item6.wireType === 2).map(item7 => ot(item7.value, true, true));
+    const fieldBytes_4 = getBytesField(fields, 1);
+    const temp_6 = fieldBytes_4.length ? parseProtobufFields(fieldBytes_4) : fields;
+    const trimmed_2 = getStringField(temp_6, 8).trim();
+    if (trimmed_2) {
+      const fieldBytes_2 = getBytesField(temp_6, 13);
+      const temp = fieldBytes_2.length ? parseProtobufFields(fieldBytes_2) : new Map();
+      const fieldBytes = getBytesField(temp_6, 14);
+      const temp_2 = fieldBytes.length ? parseProtobufFields(fieldBytes) : new Map();
+      const varint_2 = getVarintField(temp_6, 6);
+      const mappedItems = getProtobufFields(temp_2, 1).filter(item => item.wireType === 2).map(item => parseMedal(item.value, true, true));
       return {
-        petId: value88,
-        name: getStringField(value87, 1).trim(),
-        birthdayAt: getVarintField(value87, 4),
-        gender: value77 === 1 ? "男" : value77 === 2 ? "女" : "未知",
-        species: getStringField(value87, 11).trim(),
-        personality: getStringField(value87, 7).trim(),
-        avatarUrl: getStringField(value87, 18).trim() || getStringField(value87, 3).trim(),
-        fullAvatarUrl: getStringField(value87, 3).trim() || getStringField(value87, 18).trim(),
-        personalityUrl: getStringField(value87, 9).trim(),
-        medals: value78,
-        level: getVarintField(value75, 1),
-        currentExperience: getVarintField(value75, 2),
-        levelExperience: getVarintField(value75, 3),
-        experienceRate: getFloatField(value75, 4, 1)
+        petId: trimmed_2,
+        name: getStringField(temp_6, 1).trim(),
+        birthdayAt: getVarintField(temp_6, 4),
+        gender: varint_2 === 1 ? "男" : varint_2 === 2 ? "女" : "未知",
+        species: getStringField(temp_6, 11).trim(),
+        personality: getStringField(temp_6, 7).trim(),
+        avatarUrl: getStringField(temp_6, 18).trim() || getStringField(temp_6, 3).trim(),
+        fullAvatarUrl: getStringField(temp_6, 3).trim() || getStringField(temp_6, 18).trim(),
+        personalityUrl: getStringField(temp_6, 9).trim(),
+        medals: mappedItems,
+        level: getVarintField(temp, 1),
+        currentExperience: getVarintField(temp, 2),
+        levelExperience: getVarintField(temp, 3),
+        experienceRate: getFloatField(temp, 4, 1)
       };
     }
     try {
-      const value79 = await this.sendOidb(PACKETS.ownPetCache, new Uint8Array());
-      const items11 = getBytesField(parseProtobufFields(value79.body), 1);
-      const value80 = items11.length ? parseProtobufFields(items11) : new Map();
-      const value81 = getStringField(value80, 101).trim();
-      if (value81) {
+      const temp_3 = await this.sendOidb(PACKETS.ownPetCache, new Uint8Array());
+      const fieldBytes_3 = getBytesField(parseProtobufFields(temp_3.body), 1);
+      const temp_4 = fieldBytes_3.length ? parseProtobufFields(fieldBytes_3) : new Map();
+      const trimmed = getStringField(temp_4, 101).trim();
+      if (trimmed) {
         return {
-          petId: value81,
-          name: getStringField(value80, 1).trim(),
+          petId: trimmed,
+          name: getStringField(temp_4, 1).trim(),
           birthdayAt: 0,
           gender: "未知",
           species: "",
           personality: "",
           level: 0,
-          avatarUrl: getStringField(value80, 3).trim(),
-          fullAvatarUrl: getStringField(value80, 3).trim(),
+          avatarUrl: getStringField(temp_4, 3).trim(),
+          fullAvatarUrl: getStringField(temp_4, 3).trim(),
           personalityUrl: "",
           medals: [],
           currentExperience: 0,
@@ -878,363 +875,363 @@ class QQPetApi {
     return (await this.queryOwnPetProfile()).petId;
   }
   async queryMedalGallery() {
-    const value92 = parseProtobufFields((await this.sendOidb(PACKETS.medalGallery, encodeStringField(1, this.petId))).body);
-    const items14 = [];
-    for (const field6 of getProtobufFields(value92, 1)) {
-      if (field6.wireType !== 2) {
+    const fields_4 = parseProtobufFields((await this.sendOidb(PACKETS.medalGallery, encodeStringField(1, this.petId))).body);
+    const list = [];
+    for (const field_3 of getProtobufFields(fields_4, 1)) {
+      if (field_3.wireType !== 2) {
         continue;
       }
-      const value91 = parseProtobufFields(field6.value);
-      for (const field5 of getProtobufFields(value91, 3)) {
-        if (field5.wireType !== 2) {
+      const fields_3 = parseProtobufFields(field_3.value);
+      for (const field_2 of getProtobufFields(fields_3, 3)) {
+        if (field_2.wireType !== 2) {
           continue;
         }
-        const value90 = parseProtobufFields(field5.value);
-        for (const field4 of getProtobufFields(value90, 2)) {
-          if (field4.wireType !== 2) {
+        const fields_2 = parseProtobufFields(field_2.value);
+        for (const field of getProtobufFields(fields_2, 2)) {
+          if (field.wireType !== 2) {
             continue;
           }
-          const value89 = parseProtobufFields(field4.value);
-          const items13 = getBytesField(value89, 1);
-          if (items13.length) {
-            items14.push(ot(items13, !!getVarintField(value89, 2), !!getVarintField(value89, 4)));
+          const fields = parseProtobufFields(field.value);
+          const fieldBytes = getBytesField(fields, 1);
+          if (fieldBytes.length) {
+            list.push(parseMedal(fieldBytes, !!getVarintField(fields, 2), !!getVarintField(fields, 4)));
           }
         }
       }
     }
-    return items14;
+    return list;
   }
-  async queryInteractionMessages(arg146 = 20) {
-    const value96 = concatBytes(encodeVarintField(1, 0), encodeVarintField(2, Math.max(1, Math.min(50, Math.trunc(arg146)))));
-    const value97 = parseProtobufFields((await this.sendOidb(PACKETS.interactionHistory, value96)).body);
-    return getProtobufFields(value97, 1).flatMap(field7 => {
-      if (field7.wireType !== 2) {
+  async queryInteractionMessages(arg = 20) {
+    const bytes = concatBytes(encodeVarintField(1, 0), encodeVarintField(2, Math.max(1, Math.min(50, Math.trunc(arg)))));
+    const fields = parseProtobufFields((await this.sendOidb(PACKETS.interactionHistory, bytes)).body);
+    return getProtobufFields(fields, 1).flatMap(item => {
+      if (item.wireType !== 2) {
         return [];
       }
-      const value93 = parseProtobufFields(field7.value);
-      const value94 = getStringField(value93, 4).trim();
-      const value95 = Qt(getStringField(value93, 2));
-      if (!value94 || !value95) {
+      const fields = parseProtobufFields(item.value);
+      const trimmed = getStringField(fields, 4).trim();
+      const interactionText = parseInteractionText(getStringField(fields, 2));
+      if (!trimmed || !interactionText) {
         return [];
       } else {
         return [{
-          id: value94,
-          uin: getStringField(value93, 1).trim(),
-          petName: getStringField(value93, 5).trim(),
-          text: value95,
-          timestamp: getVarintField(value93, 3),
-          eventType: getVarintField(value93, 6)
+          id: trimmed,
+          uin: getStringField(fields, 1).trim(),
+          petName: getStringField(fields, 5).trim(),
+          text: interactionText,
+          timestamp: getVarintField(fields, 3),
+          eventType: getVarintField(fields, 6)
         }];
       }
     });
   }
   async queryValues() {
-    const value98 = concatBytes(encodeStringField(1, this.petId), encodeBytesField(2, Uint8Array.of(1)));
-    const value99 = concatBytes(encodeStringField(1, this.petId), encodeBytesField(2, Uint8Array.of(6)));
-    const [value100, value101, value102] = await Promise.all([this.sendOidb(PACKETS.display, value98), this.sendOidb(PACKETS.display, value99), this.queryAttributes()]);
-    const value103 = parseProtobufFields(getBytesField(parseProtobufFields(value100.body), 1));
-    const value104 = arg147 => getFloatField(parseProtobufFields(getBytesField(value103, arg147)), 3);
-    const value105 = parseProtobufFields(getBytesField(parseProtobufFields(value101.body), 1));
+    const bytes = concatBytes(encodeStringField(1, this.petId), encodeBytesField(2, Uint8Array.of(1)));
+    const bytes_2 = concatBytes(encodeStringField(1, this.petId), encodeBytesField(2, Uint8Array.of(6)));
+    const [profile, petValues, story] = await Promise.all([this.sendOidb(PACKETS.display, bytes), this.sendOidb(PACKETS.display, bytes_2), this.queryAttributes()]);
+    const fields = parseProtobufFields(getBytesField(parseProtobufFields(profile.body), 1));
+    const handler = input => getFloatField(parseProtobufFields(getBytesField(fields, input)), 3);
+    const fields_2 = parseProtobufFields(getBytesField(parseProtobufFields(petValues.body), 1));
     return {
-      feel: value104(1),
-      hunger: value104(2),
-      clean: value104(3),
-      total: value104(4),
-      gold: getFloatField(parseProtobufFields(getBytesField(value105, 5)), 3),
-      ...value102
+      feel: handler(1),
+      hunger: handler(2),
+      clean: handler(3),
+      total: handler(4),
+      gold: getFloatField(parseProtobufFields(getBytesField(fields_2, 5)), 3),
+      ...story
     };
   }
   async queryAttributes() {
-    const value109 = concatBytes(encodeVarintField(1, 6100), encodeStringField(2, this.petId), encodeVarintField(100, 2));
-    const value110 = parseProtobufFields((await this.sendOidb(PACKETS.overview, value109)).body);
-    const items15 = getBytesField(value110, 2);
-    const value111 = items15.length ? parseProtobufFields(items15) : new Map();
-    const value112 = {
+    const bytes = concatBytes(encodeVarintField(1, 6100), encodeStringField(2, this.petId), encodeVarintField(100, 2));
+    const fields_2 = parseProtobufFields((await this.sendOidb(PACKETS.overview, bytes)).body);
+    const fieldBytes = getBytesField(fields_2, 2);
+    const temp_2 = fieldBytes.length ? parseProtobufFields(fieldBytes) : new Map();
+    const attributes = {
       strength: 0,
       intelligence: 0,
       charm: 0
     };
-    const value113 = [1, 2, 3].flatMap(arg148 => getProtobufFields(value111, arg148));
-    for (const field8 of value113) {
-      if (field8.wireType !== 2) {
+    const flatItems = [1, 2, 3].flatMap(item => getProtobufFields(temp_2, item));
+    for (const field of flatItems) {
+      if (field.wireType !== 2) {
         continue;
       }
-      const value106 = parseProtobufFields(field8.value);
-      const value107 = getStringField(value106, 1);
-      const value108 = value107 === "力量" ? "strength" : value107 === "智力" ? "intelligence" : value107 === "魅力" ? "charm" : null;
-      if (value108) {
-        value112[value108] = getVarintField(value106, 3);
+      const fields = parseProtobufFields(field.value);
+      const fieldText = getStringField(fields, 1);
+      const temp = fieldText === "力量" ? "strength" : fieldText === "智力" ? "intelligence" : fieldText === "魅力" ? "charm" : null;
+      if (temp) {
+        attributes[temp] = getVarintField(fields, 3);
       }
     }
-    return value112;
+    return attributes;
   }
-  async queryOtherPet(arg150, arg219) {
-    const value118 = arg149 => {
-      const value114 = getStringField(arg149, 8).trim() || getStringField(arg149, 101).trim();
-      if (!value114) {
+  async queryOtherPet(uin, kind) {
+    const handler = input => {
+      const temp = getStringField(input, 8).trim() || getStringField(input, 101).trim();
+      if (!temp) {
         return null;
       }
-      const items16 = getBytesField(arg149, 13);
-      const value115 = items16.length ? getVarintField(parseProtobufFields(items16), 1) : 0;
+      const fieldBytes = getBytesField(input, 13);
+      const temp_2 = fieldBytes.length ? getVarintField(parseProtobufFields(fieldBytes), 1) : 0;
       return {
-        uin: arg150,
-        petId: value114,
-        name: getStringField(arg149, 1).trim(),
-        level: value115,
-        kind: arg219
+        uin: uin,
+        petId: temp,
+        name: getStringField(input, 1).trim(),
+        level: temp_2,
+        kind: kind
       };
     };
     if (this.otherPetMobileAvailable === false) {
       throw new QQPetError("当前 QQ/OneBot 运行时不支持安卓端的好友宠物详情接口");
     }
     try {
-      const value116 = parseProtobufFields((await this.sendOidb(PACKETS.otherPet, encodeStringField(1, arg150))).body);
+      const fields = parseProtobufFields((await this.sendOidb(PACKETS.otherPet, encodeStringField(1, uin))).body);
       this.otherPetMobileAvailable = true;
-      const items17 = getBytesField(value116, 1);
-      return value118(items17.length ? parseProtobufFields(items17) : value116);
-    } catch (error2) {
-      const value117 = error2 instanceof Error ? error2.message : String(error2);
-      if (/用户没有宠物|尚未创建.*宠物|未创建.*宠物/.test(value117)) {
+      const fieldBytes = getBytesField(fields, 1);
+      return handler(fieldBytes.length ? parseProtobufFields(fieldBytes) : fields);
+    } catch (error) {
+      const temp = error instanceof Error ? error.message : String(error);
+      if (/用户没有宠物|尚未创建.*宠物|未创建.*宠物/.test(temp)) {
         this.otherPetMobileAvailable = true;
         return null;
       }
-      throw /不支持.*好友宠物|action.*(?:不存在|not found|unsupported)|返回空响应或未知响应结构|unknown command/i.test(value117) ? (this.otherPetMobileAvailable = false, new QQPetError("当前 QQ/OneBot 运行时不支持安卓端的好友宠物详情接口：" + value117, "other_pet_unsupported")) : new QQPetError("查询好友宠物失败：" + value117, "other_pet_query_failed");
+      throw /不支持.*好友宠物|action.*(?:不存在|not found|unsupported)|返回空响应或未知响应结构|unknown command/i.test(temp) ? (this.otherPetMobileAvailable = false, new QQPetError("当前 QQ/OneBot 运行时不支持安卓端的好友宠物详情接口：" + temp, "other_pet_unsupported")) : new QQPetError("查询好友宠物失败：" + temp, "other_pet_query_failed");
     }
   }
-  async queryOtherValues(arg152) {
-    const value119 = concatBytes(encodeStringField(1, arg152), encodeBytesField(2, Uint8Array.of(1)));
-    const value120 = parseProtobufFields(getBytesField(parseProtobufFields((await this.sendOidb(PACKETS.display, value119)).body), 1));
-    const value121 = arg151 => getFloatField(parseProtobufFields(getBytesField(value120, arg151)), 3);
+  async queryOtherValues(petId) {
+    const bytes = concatBytes(encodeStringField(1, petId), encodeBytesField(2, Uint8Array.of(1)));
+    const fields = parseProtobufFields(getBytesField(parseProtobufFields((await this.sendOidb(PACKETS.display, bytes)).body), 1));
+    const handler = input => getFloatField(parseProtobufFields(getBytesField(fields, input)), 3);
     return {
-      feel: value121(1),
-      hunger: value121(2),
-      clean: value121(3),
-      total: value121(4)
+      feel: handler(1),
+      hunger: handler(2),
+      clean: handler(3),
+      total: handler(4)
     };
   }
-  async visitOther(arg153) {
-    const value122 = concatBytes(encodeVarintField(1, 4000), encodeVarintField(2, 0), encodeVarintField(3, 0));
-    const value123 = concatBytes(encodeStringField(1, this.petId), encodeStringField(2, arg153), encodeBytesField(3, value122), encodeBytesField(4, new Uint8Array()));
-    await this.sendOidb(PACKETS.reportEvent, value123);
+  async visitOther(uin) {
+    const bytes = concatBytes(encodeVarintField(1, 4000), encodeVarintField(2, 0), encodeVarintField(3, 0));
+    const bytes_2 = concatBytes(encodeStringField(1, this.petId), encodeStringField(2, uin), encodeBytesField(3, bytes), encodeBytesField(4, new Uint8Array()));
+    await this.sendOidb(PACKETS.reportEvent, bytes_2);
   }
-  async feedOther(arg154, arg220) {
-    const value124 = concatBytes(encodeStringField(1, arg154), encodeStringField(2, ""), encodeStringField(3, ""), encodeStringField(4, arg220));
-    await this.sendOidb(PACKETS.feed, value124);
+  async feedOther(uin, petId) {
+    const bytes = concatBytes(encodeStringField(1, uin), encodeStringField(2, ""), encodeStringField(3, ""), encodeStringField(4, petId));
+    await this.sendOidb(PACKETS.feed, bytes);
   }
-  async washOther(arg155, arg221) {
-    const value125 = concatBytes(encodeStringField(1, this.petId), encodeStringField(2, arg221), encodeVarintField(3, 1), encodeStringField(4, arg155));
-    await this.sendOidb(PACKETS.useBathItem, value125);
+  async washOther(uin, itemId) {
+    const bytes = concatBytes(encodeStringField(1, this.petId), encodeStringField(2, itemId), encodeVarintField(3, 1), encodeStringField(4, uin));
+    await this.sendOidb(PACKETS.useBathItem, bytes);
   }
   async feed() {
     await this.sendOidb(PACKETS.feed, encodeStringField(4, this.petId));
   }
   async queryFoodInventory() {
-    const value126 = await this.sendOidb(PACKETS.feedInventory, new Uint8Array());
-    const value127 = parseProtobufFields(value126.body);
+    const temp = await this.sendOidb(PACKETS.feedInventory, new Uint8Array());
+    const fields = parseProtobufFields(temp.body);
     return {
-      biscuits: getVarintField(value127, 1),
-      shrimp: getVarintField(value127, 2)
+      biscuits: getVarintField(fields, 1),
+      shrimp: getVarintField(fields, 2)
     };
   }
-  async buyFood(arg156) {
-    if (arg156 <= 0) {
+  async buyFood(count) {
+    if (count <= 0) {
       throw new QQPetError("购买饼干数量必须大于 0");
     }
-    const value128 = parseProtobufFields((await this.sendOidb(PACKETS.buyFood, encodeVarintField(1, arg156))).body);
+    const fields = parseProtobufFields((await this.sendOidb(PACKETS.buyFood, encodeVarintField(1, count))).body);
     return {
-      bought: getVarintField(value128, 3),
-      costGold: getVarintField(value128, 4)
+      bought: getVarintField(fields, 3),
+      costGold: getVarintField(fields, 4)
     };
   }
   async queryBathItems() {
-    const value131 = parseProtobufFields((await this.sendOidb(PACKETS.bathItems, encodeVarintField(1, 1))).body);
-    return getProtobufFields(value131, 1).filter(item8 => item8.wireType === 2).map(item9 => {
-      const value129 = parseProtobufFields(item9.value);
-      const items18 = getBytesField(value129, 14);
-      const value130 = items18.length ? parseProtobufFields(items18) : new Map();
+    const fields = parseProtobufFields((await this.sendOidb(PACKETS.bathItems, encodeVarintField(1, 1))).body);
+    return getProtobufFields(fields, 1).filter(item => item.wireType === 2).map(item => {
+      const fields = parseProtobufFields(item.value);
+      const fieldBytes = getBytesField(fields, 14);
+      const temp = fieldBytes.length ? parseProtobufFields(fieldBytes) : new Map();
       return {
-        name: getStringField(value129, 1),
-        itemId: getStringField(value129, 2),
-        goldPrice: getVarintField(value129, 5),
-        cleanGain: getVarintField(value129, 6),
-        description: getStringField(value129, 7),
-        defaultCount: getVarintField(value129, 8),
-        step: getVarintField(value129, 9),
-        minimum: getVarintField(value129, 10),
-        maximum: getVarintField(value129, 11),
-        moodGain: getVarintField(value129, 12),
-        previewUrl: _(getStringField(value129, 3)),
-        silhouetteUrl: _(getStringField(value129, 13)),
-        selectedPreviewUrl: _(getStringField(value129, 15)),
-        soapingUrl: _(getStringField(value130, 4))
+        name: getStringField(fields, 1),
+        itemId: getStringField(fields, 2),
+        goldPrice: getVarintField(fields, 5),
+        cleanGain: getVarintField(fields, 6),
+        description: getStringField(fields, 7),
+        defaultCount: getVarintField(fields, 8),
+        step: getVarintField(fields, 9),
+        minimum: getVarintField(fields, 10),
+        maximum: getVarintField(fields, 11),
+        moodGain: getVarintField(fields, 12),
+        previewUrl: extractImageUrl(getStringField(fields, 3)),
+        silhouetteUrl: extractImageUrl(getStringField(fields, 13)),
+        selectedPreviewUrl: extractImageUrl(getStringField(fields, 15)),
+        soapingUrl: extractImageUrl(getStringField(temp, 4))
       };
     });
   }
   async queryBathInventory() {
-    const value133 = parseProtobufFields((await this.sendOidb(PACKETS.bathInventory, encodeVarintField(1, 1))).body);
-    const items19 = getBytesField(value133, 1);
-    const value134 = items19.length ? parseProtobufFields(items19) : new Map();
-    const value135 = {};
-    for (const field9 of getProtobufFields(value134, 1)) {
-      if (field9.wireType !== 2) {
+    const fields_2 = parseProtobufFields((await this.sendOidb(PACKETS.bathInventory, encodeVarintField(1, 1))).body);
+    const fieldBytes = getBytesField(fields_2, 1);
+    const temp = fieldBytes.length ? parseProtobufFields(fieldBytes) : new Map();
+    const record = {};
+    for (const field of getProtobufFields(temp, 1)) {
+      if (field.wireType !== 2) {
         continue;
       }
-      const value132 = parseProtobufFields(field9.value);
-      value135[getStringField(value132, 1)] = getVarintField(value132, 2);
+      const fields = parseProtobufFields(field.value);
+      record[getStringField(fields, 1)] = getVarintField(fields, 2);
     }
-    const value136 = {
-      soap: value135[1] ?? 0,
-      bathBall: value135[2] ?? 0,
-      counts: value135
+    const bathInventory = {
+      soap: record[1] ?? 0,
+      bathBall: record[2] ?? 0,
+      counts: record
     };
-    return value136;
+    return bathInventory;
   }
-  async buyBathItem(arg157, arg222) {
-    if (arg222 <= 0) {
+  async buyBathItem(itemId, count) {
+    if (count <= 0) {
       throw new QQPetError("购买洗护道具数量必须大于 0");
     }
-    const value137 = concatBytes(encodeVarintField(1, 1), encodeVarintField(2, 1001), encodeStringField(3, this.petId));
-    const value138 = concatBytes(encodeVarintField(1, 355), encodeVarintField(2, Number(arg157)), encodeVarintField(3, arg222));
-    const value139 = concatBytes(encodeBytesField(1, value137), encodeVarintField(2, 1001), encodeBytesField(3, value138), encodeVarintField(4, 21));
-    const value140 = parseProtobufFields((await this.sendOidb(PACKETS.buyBathItem, value139)).body);
-    const value141 = getVarintField(value140, 1);
-    const value142 = getStringField(value140, 2);
+    const bytes = concatBytes(encodeVarintField(1, 1), encodeVarintField(2, 1001), encodeStringField(3, this.petId));
+    const bytes_2 = concatBytes(encodeVarintField(1, 355), encodeVarintField(2, Number(itemId)), encodeVarintField(3, count));
+    const bytes_3 = concatBytes(encodeBytesField(1, bytes), encodeVarintField(2, 1001), encodeBytesField(3, bytes_2), encodeVarintField(4, 21));
+    const fields = parseProtobufFields((await this.sendOidb(PACKETS.buyBathItem, bytes_3)).body);
+    const varint = getVarintField(fields, 1);
+    const fieldText = getStringField(fields, 2);
     return {
-      result: value141,
-      orderId: value142,
-      succeeded: value141 === 0 && !!value142
+      result: varint,
+      orderId: fieldText,
+      succeeded: varint === 0 && !!fieldText
     };
   }
-  async useBathItem(arg158) {
-    const value143 = concatBytes(encodeStringField(1, this.petId), encodeStringField(2, arg158), encodeVarintField(3, 1), encodeStringField(4, ""));
-    await this.sendOidb(PACKETS.useBathItem, value143);
+  async useBathItem(itemId) {
+    const bytes = concatBytes(encodeStringField(1, this.petId), encodeStringField(2, itemId), encodeVarintField(3, 1), encodeStringField(4, ""));
+    await this.sendOidb(PACKETS.useBathItem, bytes);
   }
   async querySchoolStage() {
-    const value144 = concatBytes(encodeVarintField(1, 6100), encodeStringField(2, this.petId), encodeVarintField(100, 2));
-    const value145 = getVarintField(parseProtobufFields((await this.sendOidb(PACKETS.overview, value144)).body), 4);
-    if (![0, 1, 2, 3, 4].includes(value145)) {
-      throw new QQPetError("服务器返回未知学习阶段：" + value145);
+    const bytes = concatBytes(encodeVarintField(1, 6100), encodeStringField(2, this.petId), encodeVarintField(100, 2));
+    const varint = getVarintField(parseProtobufFields((await this.sendOidb(PACKETS.overview, bytes)).body), 4);
+    if (![0, 1, 2, 3, 4].includes(varint)) {
+      throw new QQPetError("服务器返回未知学习阶段：" + varint);
     }
-    return value145;
+    return varint;
   }
-  async querySchoolCourses(arg159) {
-    const value146 = arg159 ?? (await this.querySchoolStage());
-    const value147 = concatBytes(encodeVarintField(1, 6100), encodeStringField(2, this.petId), encodeStringField(3, ""), encodeVarintField(11, value146), encodeVarintField(100, 2));
-    const value148 = parseProtobufFields((await this.sendOidb(PACKETS.catalog, value147)).body);
-    return getProtobufFields(value148, 1).filter(item10 => item10.wireType === 2).map(item11 => H(item11.value));
+  async querySchoolCourses(stage) {
+    const temp = stage ?? (await this.querySchoolStage());
+    const bytes = concatBytes(encodeVarintField(1, 6100), encodeStringField(2, this.petId), encodeStringField(3, ""), encodeVarintField(11, temp), encodeVarintField(100, 2));
+    const fields = parseProtobufFields((await this.sendOidb(PACKETS.catalog, bytes)).body);
+    return getProtobufFields(fields, 1).filter(item => item.wireType === 2).map(item => parseCatalogItem(item.value));
   }
-  async selectSchoolCourse(arg160, arg223 = 0) {
-    const value149 = {
+  async selectSchoolCourse(attribute, arg = 0) {
+    const member = {
       physical: "力量",
       culture: "智力",
       art: "魅力"
-    }[arg160];
-    if (!value149) {
-      throw new QQPetError("未知学习属性：" + arg160);
+    }[attribute];
+    if (!member) {
+      throw new QQPetError("未知学习属性：" + attribute);
     }
-    const items20 = (await this.querySchoolCourses()).filter(item12 => item12.canDo && item12.subEventType > 0);
-    const value150 = arg223 ? items20.find(item13 => item13.subEventType === arg223) : items20.filter(item14 => item14.reward.includes(value149)).sort(compareRewardPerSecond)[0];
-    if (!value150) {
-      throw new QQPetError(arg223 ? "指定课程 " + arg223 + " 当前不可用" : "当前暂无可用的" + value149 + "课程");
+    const list = (await this.querySchoolCourses()).filter(item => item.canDo && item.subEventType > 0);
+    const temp = arg ? list.find(item => item.subEventType === arg) : list.filter(item => item.reward.includes(member)).sort(compareRewardPerSecond)[0];
+    if (!temp) {
+      throw new QQPetError(arg ? "指定课程 " + arg + " 当前不可用" : "当前暂无可用的" + member + "课程");
     }
-    return value150;
+    return temp;
   }
-  async startSchool(arg161, arg224 = 0) {
-    const value151 = await this.selectSchoolCourse(arg161, arg224);
-    const value152 = concatBytes(encodeVarintField(1, 6100), encodeStringField(2, this.petId), encodeStringField(3, ""), encodeStringField(6, value151.name), encodeVarintField(7, value151.subEventType), encodeVarintField(100, 2));
-    const value153 = await this.sendOidb(PACKETS.startStory, value152);
+  async startSchool(attribute, arg = 0) {
+    const catalogItem = await this.selectSchoolCourse(attribute, arg);
+    const bytes = concatBytes(encodeVarintField(1, 6100), encodeStringField(2, this.petId), encodeStringField(3, ""), encodeStringField(6, catalogItem.name), encodeVarintField(7, catalogItem.subEventType), encodeVarintField(100, 2));
+    const temp = await this.sendOidb(PACKETS.startStory, bytes);
     return {
-      item: value151,
-      storyId: getStringField(parseProtobufFields(value153.body), 1)
+      item: catalogItem,
+      storyId: getStringField(parseProtobufFields(temp.body), 1)
     };
   }
   async queryWorkOverview() {
-    const value157 = concatBytes(encodeVarintField(1, 6400), encodeStringField(2, this.petId), encodeVarintField(100, 2));
-    const value158 = parseProtobufFields((await this.sendOidb(PACKETS.overview, value157)).body);
+    const bytes = concatBytes(encodeVarintField(1, 6400), encodeStringField(2, this.petId), encodeVarintField(100, 2));
+    const fields = parseProtobufFields((await this.sendOidb(PACKETS.overview, bytes)).body);
     return {
-      careers: getProtobufFields(value158, 1).filter(item15 => item15.wireType === 2).map(item16 => {
-        const value154 = parseProtobufFields(item16.value);
-        const value155 = getVarintField(value154, 4);
-        const value156 = getStringField(value154, 1);
+      careers: getProtobufFields(fields, 1).filter(item => item.wireType === 2).map(item => {
+        const fields = parseProtobufFields(item.value);
+        const varint = getVarintField(fields, 4);
+        const fieldText = getStringField(fields, 1);
         return {
-          careerType: getVarintField(value154, 20),
-          name: value156,
-          available: value155 !== 3 && value156 !== "???",
-          statusCode: value155,
-          message: getStringField(value154, 5)
+          careerType: getVarintField(fields, 20),
+          name: fieldText,
+          available: varint !== 3 && fieldText !== "???",
+          statusCode: varint,
+          message: getStringField(fields, 5)
         };
-      }).filter(item17 => item17.careerType > 0),
-      currentCareerType: getVarintField(value158, 3),
-      lastSubEventType: getVarintField(value158, 5)
+      }).filter(item => item.careerType > 0),
+      currentCareerType: getVarintField(fields, 3),
+      lastSubEventType: getVarintField(fields, 5)
     };
   }
-  async queryWorkJobs(arg162, arg225 = "") {
-    const value159 = concatBytes(encodeVarintField(1, 6400), encodeStringField(2, this.petId), encodeStringField(3, arg225), encodeVarintField(10, arg162), encodeVarintField(100, 2));
-    const value160 = parseProtobufFields((await this.sendOidb(PACKETS.catalog, value159)).body);
-    const value161 = getStringField(value160, 2);
-    const value162 = {
-      careerType: arg162,
-      careerName: value161
+  async queryWorkJobs(careerType, arg = "") {
+    const bytes = concatBytes(encodeVarintField(1, 6400), encodeStringField(2, this.petId), encodeStringField(3, arg), encodeVarintField(10, careerType), encodeVarintField(100, 2));
+    const fields = parseProtobufFields((await this.sendOidb(PACKETS.catalog, bytes)).body);
+    const fieldText = getStringField(fields, 2);
+    const record = {
+      careerType: careerType,
+      careerName: fieldText
     };
-    return getProtobufFields(value160, 1).filter(item18 => item18.wireType === 2).map(item19 => H(item19.value, value162));
+    return getProtobufFields(fields, 1).filter(item => item.wireType === 2).map(item => parseCatalogItem(item.value, record));
   }
-  async selectWorkJob(arg163 = 0, arg226 = 0, arg37 = "") {
-    const value163 = await this.queryWorkOverview();
-    const items21 = value163.careers.filter(item20 => item20.available && (!arg163 || item20.careerType === arg163));
-    if (!items21.length) {
-      throw new QQPetError(arg163 ? "职业 " + arg163 + " 尚未开放" : "服务器当前没有开放的职业");
+  async selectWorkJob(arg = 0, arg_2 = 0, arg_3 = "") {
+    const workOverview = await this.queryWorkOverview();
+    const list = workOverview.careers.filter(item => item.available && (!arg || item.careerType === arg));
+    if (!list.length) {
+      throw new QQPetError(arg ? "职业 " + arg + " 尚未开放" : "服务器当前没有开放的职业");
     }
-    const value164 = (await Promise.all(items21.map(async item21 => {
+    const list_2 = (await Promise.all(list.map(async item => {
       try {
-        return await this.queryWorkJobs(item21.careerType, arg37);
-      } catch (error3) {
-        if (isCareerRequirementError(error3)) {
+        return await this.queryWorkJobs(item.careerType, arg_3);
+      } catch (error) {
+        if (isCareerRequirementError(error)) {
           return [];
         }
-        throw error3;
+        throw error;
       }
-    }))).flat().filter(item22 => item22.canDo && item22.subEventType > 0);
-    const value165 = arg226 ? value164.find(item23 => item23.subEventType === arg226) : value164.sort((left, right) => compareRewardPerSecond(left, right) || +(right.careerType === value163.currentCareerType) - +(left.careerType === value163.currentCareerType) || (left.careerType ?? 0) - (right.careerType ?? 0))[0];
-    if (!value165) {
-      throw new QQPetError(arg226 ? "指定岗位 " + arg226 + " 当前不可用" : "服务器当前没有可执行的打工岗位");
+    }))).flat().filter(item => item.canDo && item.subEventType > 0);
+    const temp = arg_2 ? list_2.find(item => item.subEventType === arg_2) : list_2.sort((left, right) => compareRewardPerSecond(left, right) || +(right.careerType === workOverview.currentCareerType) - +(left.careerType === workOverview.currentCareerType) || (left.careerType ?? 0) - (right.careerType ?? 0))[0];
+    if (!temp) {
+      throw new QQPetError(arg_2 ? "指定岗位 " + arg_2 + " 当前不可用" : "服务器当前没有可执行的打工岗位");
     }
-    return value165;
+    return temp;
   }
-  async startWork(arg164 = 0, arg227 = 0, target2) {
-    const value166 = target2?.uin.trim() ?? "";
-    const value167 = target2?.petId.trim() ?? "";
-    if (!!value166 != !!value167) {
+  async startWork(arg = 0, arg_2 = 0, hire) {
+    const temp = hire?.uin.trim() ?? "";
+    const temp_2 = hire?.petId.trim() ?? "";
+    if (!!temp != !!temp_2) {
       throw new QQPetError("雇佣好友时必须同时提供好友账号和宠物 ID");
     }
-    const value168 = await this.selectWorkJob(arg164, arg227, value167);
-    const value169 = concatBytes(encodeVarintField(1, 6400), encodeStringField(2, this.petId), encodeStringField(3, ""), value166 ? encodeBytesField(4, concatBytes(encodeStringField(1, value166), encodeStringField(2, value167))) : new Uint8Array(), encodeStringField(6, value168.name), encodeVarintField(7, value168.subEventType), encodeVarintField(100, 2));
-    const value170 = await this.sendOidb(PACKETS.startStory, value169);
+    const catalogItem = await this.selectWorkJob(arg, arg_2, temp_2);
+    const bytes = concatBytes(encodeVarintField(1, 6400), encodeStringField(2, this.petId), encodeStringField(3, ""), temp ? encodeBytesField(4, concatBytes(encodeStringField(1, temp), encodeStringField(2, temp_2))) : new Uint8Array(), encodeStringField(6, catalogItem.name), encodeVarintField(7, catalogItem.subEventType), encodeVarintField(100, 2));
+    const temp_3 = await this.sendOidb(PACKETS.startStory, bytes);
     return {
-      item: value168,
-      storyId: getStringField(parseProtobufFields(value170.body), 1),
-      hiredFriend: !!value166
+      item: catalogItem,
+      storyId: getStringField(parseProtobufFields(temp_3.body), 1),
+      hiredFriend: !!temp
     };
   }
-  async queryAdventureOptions(arg165 = "") {
-    const value171 = concatBytes(encodeVarintField(1, 6700), encodeStringField(2, this.petId), encodeStringField(3, arg165), encodeVarintField(100, 2));
-    const value172 = parseProtobufFields((await this.sendOidb(PACKETS.catalog, value171)).body);
-    return getProtobufFields(value172, 1).filter(item24 => item24.wireType === 2).map(item25 => H(item25.value));
+  async queryAdventureOptions(arg = "") {
+    const bytes = concatBytes(encodeVarintField(1, 6700), encodeStringField(2, this.petId), encodeStringField(3, arg), encodeVarintField(100, 2));
+    const fields = parseProtobufFields((await this.sendOidb(PACKETS.catalog, bytes)).body);
+    return getProtobufFields(fields, 1).filter(item => item.wireType === 2).map(item => parseCatalogItem(item.value));
   }
   async queryFatigueStatus() {
     try {
-      const value173 = (await this.queryWorkOverview()).careers.find(item26 => item26.available);
-      let items23;
+      const foundItem = (await this.queryWorkOverview()).careers.find(item => item.available);
+      let list;
       try {
-        items23 = value173 ? await this.queryWorkJobs(value173.careerType) : await this.querySchoolCourses();
-      } catch (error3) {
-        if (!value173 || !isCareerRequirementError(error3)) {
-          throw error3;
+        list = foundItem ? await this.queryWorkJobs(foundItem.careerType) : await this.querySchoolCourses();
+      } catch (error) {
+        if (!foundItem || !isCareerRequirementError(error)) {
+          throw error;
         }
-        items23 = await this.querySchoolCourses();
+        list = await this.querySchoolCourses();
       }
-      const value174 = items23.filter(item27 => item27.name).sort((left2, right2) => (parseDurationSeconds(left2.duration) || Number.MAX_SAFE_INTEGER) - (parseDurationSeconds(right2.duration) || Number.MAX_SAFE_INTEGER))[0];
-      if (value174) {
-        return parseFatigueStatus(value174.warning ?? "");
+      const member = list.filter(item => item.name).sort((left2, right2) => (parseDurationSeconds(left2.duration) || Number.MAX_SAFE_INTEGER) - (parseDurationSeconds(right2.duration) || Number.MAX_SAFE_INTEGER))[0];
+      if (member) {
+        return parseFatigueStatus(member.warning ?? "");
       } else {
         return {
           fatigued: null,
@@ -1243,56 +1240,56 @@ class QQPetApi {
           reason: "服务器没有返回可用于疲劳判定的任务"
         };
       }
-    } catch (error3) {
+    } catch (error_2) {
       return {
         fatigued: null,
         tier: null,
         benefitRate: null,
-        reason: "疲劳状态读取失败：" + (error3 instanceof Error ? error3.message : String(error3))
+        reason: "疲劳状态读取失败：" + (error_2 instanceof Error ? error_2.message : String(error_2))
       };
     }
   }
-  async startAdventure(arg166 = "") {
-    const value175 = (await this.queryAdventureOptions()).filter(item28 => item28.canDo && item28.name);
-    const value176 = arg166 ? value175.find(item29 => item29.name === arg166) : value175[0];
-    if (!value176) {
-      throw new QQPetError(arg166 ? "指定冒险“" + arg166 + "”当前不可用" : "服务器当前没有可执行的冒险");
+  async startAdventure(arg = "") {
+    const list_2 = (await this.queryAdventureOptions()).filter(item => item.canDo && item.name);
+    const catalogItem = arg ? list_2.find(item => item.name === arg) : list_2[0];
+    if (!catalogItem) {
+      throw new QQPetError(arg ? "指定冒险“" + arg + "”当前不可用" : "服务器当前没有可执行的冒险");
     }
-    const items22 = [encodeVarintField(1, 6700), encodeStringField(2, this.petId), encodeStringField(3, ""), encodeStringField(6, value176.name)];
-    if (value176.subEventType > 0) {
-      items22.push(encodeVarintField(7, value176.subEventType));
+    const list = [encodeVarintField(1, 6700), encodeStringField(2, this.petId), encodeStringField(3, ""), encodeStringField(6, catalogItem.name)];
+    if (catalogItem.subEventType > 0) {
+      list.push(encodeVarintField(7, catalogItem.subEventType));
     }
-    items22.push(encodeVarintField(100, 2));
-    const value177 = await this.sendOidb(PACKETS.startStory, concatBytes(...items22));
+    list.push(encodeVarintField(100, 2));
+    const temp = await this.sendOidb(PACKETS.startStory, concatBytes(...list));
     return {
-      item: value176,
-      storyId: getStringField(parseProtobufFields(value177.body), 1)
+      item: catalogItem,
+      storyId: getStringField(parseProtobufFields(temp.body), 1)
     };
   }
   async queryStory() {
-    const value178 = concatBytes(encodeStringField(1, this.petId), encodeVarintField(100, 2));
-    const value179 = parseProtobufFields((await this.sendOidb(PACKETS.storyStatus, value178)).body);
-    const items23 = getBytesField(value179, 1);
-    const value180 = items23.length ? parseProtobufFields(items23) : new Map();
-    const value181 = getStringField(value179, 2);
-    const value182 = getVarintField(value180, 2);
-    const value183 = getVarintField(value180, 3);
+    const bytes = concatBytes(encodeStringField(1, this.petId), encodeVarintField(100, 2));
+    const fields = parseProtobufFields((await this.sendOidb(PACKETS.storyStatus, bytes)).body);
+    const fieldBytes = getBytesField(fields, 1);
+    const temp = fieldBytes.length ? parseProtobufFields(fieldBytes) : new Map();
+    const fieldText = getStringField(fields, 2);
+    const varint = getVarintField(temp, 2);
+    const varint_2 = getVarintField(temp, 3);
     return {
-      storyId: value181,
-      stateCode: getVarintField(value180, 1),
-      remainingSeconds: value182,
-      durationSeconds: value183,
-      startedAt: getVarintField(value180, 4),
-      recallable: !!getVarintField(value180, 5),
-      finished: !!value181 && !!(value183 > 0) && !!(value182 <= 0)
+      storyId: fieldText,
+      stateCode: getVarintField(temp, 1),
+      remainingSeconds: varint,
+      durationSeconds: varint_2,
+      startedAt: getVarintField(temp, 4),
+      recallable: !!getVarintField(temp, 5),
+      finished: !!fieldText && !!(varint_2 > 0) && !!(varint <= 0)
     };
   }
-  async settleStory(arg167) {
-    const value184 = concatBytes(encodeStringField(1, arg167), encodeVarintField(2, 1000), encodeStringField(3, this.petId), encodeVarintField(100, 2));
-    return this.sendOidb(PACKETS.storySettle, value184);
+  async settleStory(storyId) {
+    const bytes = concatBytes(encodeStringField(1, storyId), encodeVarintField(2, 1000), encodeStringField(3, this.petId), encodeVarintField(100, 2));
+    return this.sendOidb(PACKETS.storySettle, bytes);
   }
 }
-const delaySeconds = arg168 => new Promise(resolve2 => setTimeout(resolve2, Math.max(0, arg168) * 1000));
+const delaySeconds = seconds => new Promise(resolve2 => setTimeout(resolve2, Math.max(0, seconds) * 1000));
 const ATTRIBUTE_ROTATION = ["physical", "culture", "art"];
 const ATTRIBUTE_KEYS = {
   physical: "strength",
@@ -1333,7 +1330,10 @@ function selectSchoolAttribute(config, values, rotationIndex = 0) {
     return lowestSchoolAttribute(config, values);
   }
   if (config.schoolSelectionMode === "rotation") {
-    return rotateSchoolAttribute({ ...config, schoolRotationEnabled: true }, rotationIndex);
+    return rotateSchoolAttribute({
+      ...config,
+      schoolRotationEnabled: true
+    }, rotationIndex);
   }
   return config.schoolAttribute;
 }
@@ -1362,7 +1362,7 @@ function selectSchoolOrWork(config, values, counts) {
     school: config.schoolEnabled && values.gold >= config.coinThreshold,
     work: config.workEnabled && (!config.workTimesPerDay || (counts.work ?? 0) < config.workTimesPerDay)
   };
-  return (config.taskPriority === "work" ? ["work", "school"] : ["school", "work"]).find((kind) => available[kind]) ?? null;
+  return (config.taskPriority === "work" ? ["work", "school"] : ["school", "work"]).find(kind => available[kind]) ?? null;
 }
 function fatigueAction(config, fatigue) {
   if (!fatigue.fatigued || !fatigue.tier) {
@@ -1393,10 +1393,7 @@ function isIrrecoverableSettleError(error) {
   return /宠物结算条件不满足|(?:任务|故事).*(?:已结算|不存在|已失效|已完成)|无需结算|settle.*(?:already|not found|invalid|expired)/i.test(message);
 }
 function compareEmployableFriends(left, right) {
-  return right.bonus - left.bonus
-    || right.totalReward - left.totalReward
-    || right.target.level - left.target.level
-    || left.target.uin.localeCompare(right.target.uin);
+  return right.bonus - left.bonus || right.totalReward - left.totalReward || right.target.level - left.target.level || left.target.uin.localeCompare(right.target.uin);
 }
 function isAdventureWindowOpen(config, now = new Date()) {
   if (!config.adventureEnabled) {
@@ -1412,9 +1409,9 @@ function decideNextTask(config, values, counts, now = new Date()) {
   return selectSchoolOrWork(config, values, counts);
 }
 class AutomationController {
-  constructor(arg174, arg233) {
-    this.host = arg174;
-    this.progress = arg233;
+  constructor(host, progress) {
+    this.host = host;
+    this.progress = progress;
   }
   timer = null;
   busy = false;
@@ -1435,13 +1432,13 @@ class AutomationController {
       return false;
     }
     this.active = true;
-    const value191 = ++this.generation;
+    const temp = ++this.generation;
     this.host.log("自动托管已启动");
     this.host.updateStatus({
       automationRunning: true,
       activity: "自动托管已启动，正在检查"
     });
-    this.loop(value191);
+    this.loop(temp);
     return true;
   }
   stop() {
@@ -1474,8 +1471,8 @@ class AutomationController {
     }
     return true;
   }
-  async loop(arg175) {
-    if (!this.active || arg175 !== this.generation) {
+  async loop(generation) {
+    if (!this.active || generation !== this.generation) {
       return;
     }
     let nextDelay;
@@ -1483,85 +1480,85 @@ class AutomationController {
       await this.runOnce();
       this.failureStreak = 0;
       nextDelay = Math.max(3, this.host.getConfig().intervalSeconds) * 1000;
-    } catch (error5) {
-      const value192 = error5 instanceof Error ? error5.message : String(error5);
+    } catch (error) {
+      const temp = error instanceof Error ? error.message : String(error);
       this.failureStreak += 1;
       const intervalMs = Math.max(3, this.host.getConfig().intervalSeconds) * 1000;
-      nextDelay = Math.min(300000, intervalMs * (2 ** Math.min(6, this.failureStreak - 1)));
-      this.host.log("本轮失败：" + value192);
+      nextDelay = Math.min(300000, intervalMs * 2 ** Math.min(6, this.failureStreak - 1));
+      this.host.log("本轮失败：" + temp);
       this.host.updateStatus({
         connected: false,
-        error: value192,
+        error: temp,
         activity: "本轮执行失败，等待重试"
       });
     }
-    if (!this.active || arg175 !== this.generation) {
+    if (!this.active || generation !== this.generation) {
       return;
     }
     this.timer = setTimeout(() => {
       this.timer = null;
-      this.loop(arg175);
+      this.loop(generation);
     }, nextDelay);
   }
   async client() {
-    const target4 = this.host.getConfig();
-    const target5 = new QQPetApi(this.host.ctx, target4.petId);
-    const value195 = isAutoPetId(target4.petId);
-    if (value195 || !this.identityLoaded) {
-      if (value195) {
+    const config = this.host.getConfig();
+    const api = new QQPetApi(this.host.ctx, config.petId);
+    const isAuto = isAutoPetId(config.petId);
+    if (isAuto || !this.identityLoaded) {
+      if (isAuto) {
         this.host.updateStatus({
           activity: "正在自动获取宠物档案"
         });
       }
       try {
-        const target3 = await target5.queryOwnPetProfile();
-        this.petName = target3.name;
+        const profile = await api.queryOwnPetProfile();
+        this.petName = profile.name;
         this.identityLoaded = true;
-        if (value195) {
+        if (isAuto) {
           this.host.updateConfig({
-            petId: target3.petId
+            petId: profile.petId
           });
-          target5.petId = target3.petId;
+          api.petId = profile.petId;
           this.host.log("已自动获取宠物 ID 和昵称并保存");
         }
-      } catch (value194) {
-        if (value195) {
-          throw value194;
+      } catch (error) {
+        if (isAuto) {
+          throw error;
         }
         this.identityLoaded = true;
       }
     }
-    return target5;
+    return api;
   }
-  async queryProfile(arg176) {
-    const value196 = await arg176.queryOwnPetProfile();
+  async queryProfile(client) {
+    const profile = await client.queryOwnPetProfile();
     if (!this.medals || Date.now() - this.medalsLoadedAt >= 300000) {
       try {
-        const items24 = await arg176.queryMedalGallery();
-        if (items24.length) {
-          this.medals = items24;
+        const medalGallery = await client.queryMedalGallery();
+        if (medalGallery.length) {
+          this.medals = medalGallery;
         }
         this.medalsLoadedAt = Date.now();
       } catch {
-        this.medals ||= value196.medals;
+        this.medals ||= profile.medals;
         this.medalsLoadedAt = Date.now();
       }
     }
     if (!this.interactionsLoadedAt || Date.now() - this.interactionsLoadedAt >= 300000) {
       try {
-        this.interactions = await arg176.queryInteractionMessages();
+        this.interactions = await client.queryInteractionMessages();
       } catch {}
       this.interactionsLoadedAt = Date.now();
     }
-    const value197 = {
-      ...value196
+    const record = {
+      ...profile
     };
-    value197.medals = this.medals ?? value196.medals;
-    return value197;
+    record.medals = this.medals ?? profile.medals;
+    return record;
   }
-  async blocked(arg177, arg234) {
-    if (arg177.safeMode) {
-      this.host.log("安全模式：计划执行" + arg234 + "，本轮不发送写请求");
+  async blocked(config, actionLabel) {
+    if (config.safeMode) {
+      this.host.log("安全模式：计划执行" + actionLabel + "，本轮不发送写请求");
       return true;
     } else {
       return false;
@@ -1588,344 +1585,344 @@ class AutomationController {
       delta: telemetryDelta(before, after)
     });
   }
-  decide(arg178, arg235) {
-    return decideNextTask(arg178, arg235, this.progress.snapshot().counts);
+  decide(config, values) {
+    return decideNextTask(config, values, this.progress.snapshot().counts);
   }
-  actionArray(arg181) {
-    if (Array.isArray(arg181)) {
-      return arg181.flatMap(arg179 => this.actionArray(arg179));
+  actionArray(payload) {
+    if (Array.isArray(payload)) {
+      return payload.flatMap(item => this.actionArray(item));
     }
-    if (arg181 && typeof arg181 == "object") {
-      const value201 = arg181;
-      if ("user_id" in value201 || "uin" in value201 || "group_id" in value201) {
-        return [value201];
+    if (payload && typeof payload == "object") {
+      const payload_2 = payload;
+      if ("user_id" in payload_2 || "uin" in payload_2 || "group_id" in payload_2) {
+        return [payload_2];
       } else {
-        return Object.values(value201).flatMap(arg180 => this.actionArray(arg180));
+        return Object.values(payload_2).flatMap(item => this.actionArray(item));
       }
     }
     return [];
   }
-  async callAction(arg182, arg236) {
-    const value202 = await this.host.ctx.actions.call(arg182, arg236, this.host.ctx.adapterName, this.host.ctx.pluginManager.config);
-    return this.actionArray(value202);
+  async callAction(action, params) {
+    const temp = await this.host.ctx.actions.call(action, params, this.host.ctx.adapterName, this.host.ctx.pluginManager.config);
+    return this.actionArray(temp);
   }
-  targetLabel(target6) {
-    return (target6.name?.trim() ? "“" + target6.name.trim() + "”" : "未命名对象") + "（QQ " + target6.uin + "）";
+  targetLabel(target) {
+    return (target.name?.trim() ? "“" + target.name.trim() + "”" : "未命名对象") + "（QQ " + target.uin + "）";
   }
   async friendCandidates() {
-    const items25 = (await this.callAction("get_friends_with_category", {})).flatMap(loginInfo2 => {
-      const value203 = String(loginInfo2.user_id ?? loginInfo2.uin ?? "").trim();
-      const value204 = String(loginInfo2.remark ?? loginInfo2.nickname ?? loginInfo2.nick ?? "").trim();
-      if (value203 && value203 !== this.host.uin) {
+    const list = (await this.callAction("get_friends_with_category", {})).flatMap(item => {
+      const trimmed = String(item.user_id ?? item.uin ?? "").trim();
+      const trimmed_2 = String(item.remark ?? item.nickname ?? item.nick ?? "").trim();
+      if (trimmed && trimmed !== this.host.uin) {
         return [{
-          uin: value203,
-          name: value204,
+          uin: trimmed,
+          name: trimmed_2,
           kind: "friend"
         }];
       } else {
         return [];
       }
     });
-    return [...new Map(items25.map(item31 => [item31.uin, item31])).values()];
+    return [...new Map(list.map(item => [item.uin, item])).values()];
   }
-  async visitCandidates(arg183) {
-    const items27 = await this.friendCandidates();
-    const value211 = new Set(items27.map(item32 => item32.uin));
-    const items28 = arg183.visitFriends ? items27 : [];
-    const items29 = [];
-    if (arg183.visitStrangers) {
-      let items26 = arg183.visitStrangerGroupIds.split(/[,，\s]+/).map(item33 => item33.trim()).filter(Boolean);
-      if (!items26.length) {
-        items26 = (await this.callAction("get_group_list", {})).slice(0, 1).map(item34 => String(item34.group_id ?? "")).filter(Boolean);
+  async visitCandidates(config) {
+    const list = await this.friendCandidates();
+    const temp_2 = new Set(list.map(item => item.uin));
+    const list_2 = config.visitFriends ? list : [];
+    const list_3 = [];
+    if (config.visitStrangers) {
+      let filteredItems = config.visitStrangerGroupIds.split(/[,，\s]+/).map(item => item.trim()).filter(Boolean);
+      if (!filteredItems.length) {
+        filteredItems = (await this.callAction("get_group_list", {})).slice(0, 1).map(item => String(item.group_id ?? "")).filter(Boolean);
       }
-      for (const value209 of items26.slice(0, 3)) {
-        const value207 = {
-          group_id: value209,
+      for (const temp of filteredItems.slice(0, 3)) {
+        const record = {
+          group_id: temp,
           no_cache: false
         };
-        const value208 = await this.callAction("get_group_member_list", value207);
-        for (const loginInfo3 of value208) {
-          const value205 = String(loginInfo3.user_id ?? loginInfo3.uin ?? "");
-          const value206 = String(loginInfo3.card ?? loginInfo3.nickname ?? loginInfo3.nick ?? "").trim();
-          if (value205 && value205 !== this.host.uin && !value211.has(value205)) {
-            items29.push({
-              uin: value205,
-              name: value206,
+        const actionResult = await this.callAction("get_group_member_list", record);
+        for (const loginInfo of actionResult) {
+          const text = String(loginInfo.user_id ?? loginInfo.uin ?? "");
+          const trimmed = String(loginInfo.card ?? loginInfo.nickname ?? loginInfo.nick ?? "").trim();
+          if (text && text !== this.host.uin && !temp_2.has(text)) {
+            list_3.push({
+              uin: text,
+              name: trimmed,
               kind: "stranger"
             });
           }
         }
       }
     }
-    const items30 = [...new Map(items28.map(item35 => [item35.uin, item35])).values()];
-    const items31 = [...new Map(items29.map(item36 => [item36.uin, item36])).values()];
-    const items32 = [];
-    const value212 = Math.max(items30.length, items31.length);
-    for (let value210 = 0; value210 < value212; value210 += 1) {
-      if (items30[value210]) {
-        items32.push(items30[value210]);
+    const list_4 = [...new Map(list_2.map(item => [item.uin, item])).values()];
+    const list_5 = [...new Map(list_3.map(item => [item.uin, item])).values()];
+    const list_6 = [];
+    const temp_3 = Math.max(list_4.length, list_5.length);
+    for (let number = 0; number < temp_3; number += 1) {
+      if (list_4[number]) {
+        list_6.push(list_4[number]);
       }
-      if (items31[value210]) {
-        items32.push(items31[value210]);
+      if (list_5[number]) {
+        list_6.push(list_5[number]);
       }
     }
-    return items32;
+    return list_6;
   }
-  async findEmployableFriend(arg184, arg237) {
-    let items33;
+  async findEmployableFriend(client, config) {
+    let temp_2;
     try {
-      items33 = (await this.friendCandidates()).slice(0, arg237.workFriendScanLimit);
-    } catch (error6) {
-      this.host.log("读取好友列表失败，本次按普通打工继续：" + (error6 instanceof Error ? error6.message : String(error6)));
+      temp_2 = (await this.friendCandidates()).slice(0, config.workFriendScanLimit);
+    } catch (error) {
+      this.host.log("读取好友列表失败，本次按普通打工继续：" + (error instanceof Error ? error.message : String(error)));
       return null;
     }
-    let value216 = items33.length ? "" : "好友列表没有可扫描对象";
-    let value217;
+    let temp_3 = temp_2.length ? "" : "好友列表没有可扫描对象";
+    let catalogItem_2;
     try {
-      value217 = await arg184.selectWorkJob(arg237.workCareerType, arg237.workJobSubEvent);
-    } catch (error7) {
-      this.host.log("读取普通岗位收益失败，无法比较好友雇佣加成：" + (error7 instanceof Error ? error7.message : String(error7)));
+      catalogItem_2 = await client.selectWorkJob(config.workCareerType, config.workJobSubEvent);
+    } catch (error_2) {
+      this.host.log("读取普通岗位收益失败，无法比较好友雇佣加成：" + (error_2 instanceof Error ? error_2.message : String(error_2)));
       return null;
     }
-    const value218 = parseRewardAmount(value217.reward);
-    const value219 = value217.careerType;
-    if (!value219) {
+    const rewardAmount_2 = parseRewardAmount(catalogItem_2.reward);
+    const careerType = catalogItem_2.careerType;
+    if (!careerType) {
       this.host.log("服务器未返回基准岗位所属职业，无法比较好友雇佣加成，本次按普通打工继续");
       return null;
     }
-    const items34 = [];
-    for (const target8 of items33) {
+    const list = [];
+    for (const temp of temp_2) {
       try {
-        const target7 = await arg184.queryOtherPet(target8.uin, "friend");
-        if (!target7) {
-          value216 = this.targetLabel(target8) + "尚未创建宠物";
+        const otherPet = await client.queryOtherPet(temp.uin, "friend");
+        if (!otherPet) {
+          temp_3 = this.targetLabel(temp) + "尚未创建宠物";
           continue;
         }
-        const value213 = (await arg184.queryWorkJobs(value219, target7.petId)).find(item37 => item37.canDo && item37.subEventType === value217.subEventType);
-        if (!value213) {
-          value216 = this.targetLabel(target7) + "不能参加当前岗位";
+        const catalogItem = (await client.queryWorkJobs(careerType, otherPet.petId)).find(item => item.canDo && item.subEventType === catalogItem_2.subEventType);
+        if (!catalogItem) {
+          temp_3 = this.targetLabel(otherPet) + "不能参加当前岗位";
           continue;
         }
-        const value214 = parseRewardAmount(value213.reward);
-        items34.push({
-          target: target7,
-          jobSubEvent: value213.subEventType,
-          bonus: value214 - value218,
-          totalReward: value214
+        const rewardAmount = parseRewardAmount(catalogItem.reward);
+        list.push({
+          target: otherPet,
+          jobSubEvent: catalogItem.subEventType,
+          bonus: rewardAmount - rewardAmount_2,
+          totalReward: rewardAmount
         });
-      } catch (error8) {
-        value216 = this.targetLabel(target8) + "不可雇佣：" + (error8 instanceof Error ? error8.message : String(error8));
-        if (value216.includes("不支持安卓端的好友宠物详情接口")) {
+      } catch (error_3) {
+        temp_3 = this.targetLabel(temp) + "不可雇佣：" + (error_3 instanceof Error ? error_3.message : String(error_3));
+        if (temp_3.includes("不支持安卓端的好友宠物详情接口")) {
           break;
         }
       }
     }
-    items34.sort(compareEmployableFriends);
-    if (items34[0]) {
-      const value215 = items34[0];
-      this.host.log("已比较 " + items34.length + " 只可雇佣好友宠物，选择" + this.targetLabel(value215.target) + "，预计雇佣加成 " + (value215.bonus >= 0 ? "+" : "") + value215.bonus);
-      return value215;
+    list.sort(compareEmployableFriends);
+    if (list[0]) {
+      const hireCandidate = list[0];
+      this.host.log("已比较 " + list.length + " 只可雇佣好友宠物，选择" + this.targetLabel(hireCandidate.target) + "，预计雇佣加成 " + (hireCandidate.bonus >= 0 ? "+" : "") + hireCandidate.bonus);
+      return hireCandidate;
     }
-    this.host.log("未找到可雇佣的好友宠物，本次按普通打工继续" + (value216 ? "（" + value216 + "）" : ""));
+    this.host.log("未找到可雇佣的好友宠物，本次按普通打工继续" + (temp_3 ? "（" + temp_3 + "）" : ""));
     return null;
   }
-  async maybeVisit(arg185, config2, foodInventory, bathInventory2) {
-    if (!config2.visitEnabled || this.progress.activeBlock("visit")) {
+  async maybeVisit(client, config, foodInventory, bathInventory) {
+    if (!config.visitEnabled || this.progress.activeBlock("visit")) {
       return false;
     }
-    const value226 = this.progress.snapshot().counts;
-    const value227 = (value226.visitFriend ?? 0) + (value226.visitStranger ?? 0);
-    if (config2.visitMaxPerDay && value227 >= config2.visitMaxPerDay || (await this.blocked(config2, "走访宠物"))) {
+    const counts = this.progress.snapshot().counts;
+    const combined = (counts.visitFriend ?? 0) + (counts.visitStranger ?? 0);
+    if (config.visitMaxPerDay && combined >= config.visitMaxPerDay || (await this.blocked(config, "走访宠物"))) {
       return false;
     }
-    let value228 = "";
+    let text = "";
     try {
-      const value223 = (await this.visitCandidates(config2)).filter(item38 => !this.progress.targetWasVisited(item38.uin)).slice(0, config2.visitCandidateScanLimit);
-      for (const target10 of value223) {
+      const slicedItems = (await this.visitCandidates(config)).filter(item => !this.progress.targetWasVisited(item.uin)).slice(0, config.visitCandidateScanLimit);
+      for (const target_2 of slicedItems) {
         try {
-          await arg185.visitOther(target10.uin);
-          this.progress.markTargetVisited(target10.uin);
-          this.progress.increment(target10.kind === "friend" ? "visitFriend" : "visitStranger");
-          this.host.log("自动走访" + (target10.kind === "friend" ? "好友" : "陌生人") + this.targetLabel(target10) + "成功");
-          const value221 = config2.otherCareDailyExperienceLimit > 0 && this.progress.snapshot().dailyExperienceGain >= config2.otherCareDailyExperienceLimit;
-          if (config2.visitAutoCare && value221) {
-            this.host.log("今日经验已达到 " + config2.otherCareDailyExperienceLimit + "，停止照顾别人");
-          } else if (config2.visitAutoCare) {
+          await client.visitOther(target_2.uin);
+          this.progress.markTargetVisited(target_2.uin);
+          this.progress.increment(target_2.kind === "friend" ? "visitFriend" : "visitStranger");
+          this.host.log("自动走访" + (target_2.kind === "friend" ? "好友" : "陌生人") + this.targetLabel(target_2) + "成功");
+          const temp_2 = config.otherCareDailyExperienceLimit > 0 && this.progress.snapshot().dailyExperienceGain >= config.otherCareDailyExperienceLimit;
+          if (config.visitAutoCare && temp_2) {
+            this.host.log("今日经验已达到 " + config.otherCareDailyExperienceLimit + "，停止照顾别人");
+          } else if (config.visitAutoCare) {
             try {
-              const target9 = await arg185.queryOtherPet(target10.uin, target10.kind);
-              if (target9) {
-                const values3 = await arg185.queryOtherValues(target9.petId);
-                if (values3.hunger < config2.hungerThreshold && foodInventory.biscuits > 0) {
-                  await arg185.feedOther(target9.uin, target9.petId);
+              const target = await client.queryOtherPet(target_2.uin, target_2.kind);
+              if (target) {
+                const petValues = await client.queryOtherValues(target.petId);
+                if (petValues.hunger < config.hungerThreshold && foodInventory.biscuits > 0) {
+                  await client.feedOther(target.uin, target.petId);
                   this.progress.increment("careOther");
                   this.host.log("已自动喂养走访对象");
                 }
-                const value220 = bathInventory2.bathBall > 0 ? "2" : bathInventory2.soap > 0 ? "1" : null;
-                if (values3.clean < config2.cleanThreshold && value220) {
-                  await arg185.washOther(target9.uin, value220);
+                const temp = bathInventory.bathBall > 0 ? "2" : bathInventory.soap > 0 ? "1" : null;
+                if (petValues.clean < config.cleanThreshold && temp) {
+                  await client.washOther(target.uin, temp);
                   this.progress.increment("careOther");
                   this.host.log("已自动清洁走访对象");
                 }
               }
-            } catch (error9) {
-              this.host.log("走访已完成，暂无法读取对方宠物状态：" + (error9 instanceof Error ? error9.message : String(error9)));
+            } catch (error) {
+              this.host.log("走访已完成，暂无法读取对方宠物状态：" + (error instanceof Error ? error.message : String(error)));
             }
           }
-          const value222 = randomDelaySeconds(config2.visitDelayMinMinutes, config2.visitDelayMaxMinutes);
-          this.progress.setBlock("visit", "等待下次走访", value222);
+          const delaySeconds_2 = randomDelaySeconds(config.visitDelayMinMinutes, config.visitDelayMaxMinutes);
+          this.progress.setBlock("visit", "等待下次走访", delaySeconds_2);
           this.host.updateStatus({
             activity: "自动走访已完成"
           });
           return true;
-        } catch (error10) {
-          value228 = error10 instanceof Error ? error10.message : String(error10);
+        } catch (error_2) {
+          text = error_2 instanceof Error ? error_2.message : String(error_2);
         }
       }
-      const value224 = randomDelaySeconds(config2.visitDelayMinMinutes, config2.visitDelayMaxMinutes);
-      this.progress.setBlock("visit", value228 || "暂无可走访的宠物", value224);
-      if (value228) {
-        this.host.log("走访候选检查未成功：" + value228);
+      const delaySeconds_3 = randomDelaySeconds(config.visitDelayMinMinutes, config.visitDelayMaxMinutes);
+      this.progress.setBlock("visit", text || "暂无可走访的宠物", delaySeconds_3);
+      if (text) {
+        this.host.log("走访候选检查未成功：" + text);
       }
-    } catch (error11) {
-      const value225 = error11 instanceof Error ? error11.message : String(error11);
-      this.progress.setBlock("visit", value225, config2.failureCooldownSeconds);
-      this.host.log("获取走访候选失败：" + value225);
+    } catch (error_3) {
+      const temp_3 = error_3 instanceof Error ? error_3.message : String(error_3);
+      this.progress.setBlock("visit", temp_3, config.failureCooldownSeconds);
+      this.host.log("获取走访候选失败：" + temp_3);
     }
     return false;
   }
-  storyKind(arg186) {
+  storyKind(storyId) {
     return {
       "6100": "school",
       "6400": "work",
       "6700": "adventure"
-    }[arg186.split("_", 1)[0]] ?? null;
+    }[storyId.split("_", 1)[0]] ?? null;
   }
-  handleMissingPending(arg187, story3) {
-    if (!story3) {
+  handleMissingPending(config, pending) {
+    if (!pending) {
       return false;
     }
-    const value229 = this.progress.markPendingMissing();
-    const value230 = value229 ? (Date.now() - Date.parse(value229)) / 1000 : 0;
-    if (value230 < arg187.startConfirmSeconds) {
+    const missingSince = this.progress.markPendingMissing();
+    const temp = missingSince ? (Date.now() - Date.parse(missingSince)) / 1000 : 0;
+    if (temp < config.startConfirmSeconds) {
       this.host.updateStatus({
-        activity: "任务状态暂未返回，等待同步（" + Math.ceil(arg187.startConfirmSeconds - value230) + "s）"
+        activity: "任务状态暂未返回，等待同步（" + Math.ceil(config.startConfirmSeconds - temp) + "s）"
       });
       return true;
     } else {
       this.progress.clearPending();
-      this.host.log("服务器持续未返回任务 " + (story3.storyId || story3.kind) + "，已清除待确认记录且不计入完成次数");
+      this.host.log("服务器持续未返回任务 " + (pending.storyId || pending.kind) + "，已清除待确认记录且不计入完成次数");
       return true;
     }
   }
-  async handleStory(arg188, arg238, story4) {
-    let story5 = this.progress.snapshot().pending;
-    if (story4.storyId) {
-      if (story4.finished && (this.progress.storyWasSettled(story4.storyId) || this.progress.storyWasDismissed(story4.storyId))) {
-        return this.handleMissingPending(arg238, story5);
+  async handleStory(client, config, story) {
+    let story_2 = this.progress.snapshot().pending;
+    if (story.storyId) {
+      if (story.finished && (this.progress.storyWasSettled(story.storyId) || this.progress.storyWasDismissed(story.storyId))) {
+        return this.handleMissingPending(config, story_2);
       }
-      const value233 = this.storyKind(story4.storyId);
-      const value234 = !!story5 && (story5.storyId !== story4.storyId || !!value233 && story5.kind !== value233);
-      if (!story5 || !story5.confirmed || value234) {
-        if (value234) {
-          this.host.log("本地待处理任务 " + (story5?.storyId || story5?.kind) + " 与服务器 " + story4.storyId + " 不一致，已按服务器状态恢复");
+      const kind = this.storyKind(story.storyId);
+      const temp = !!story_2 && (story_2.storyId !== story.storyId || !!kind && story_2.kind !== kind);
+      if (!story_2 || !story_2.confirmed || temp) {
+        if (temp) {
+          this.host.log("本地待处理任务 " + (story_2?.storyId || story_2?.kind) + " 与服务器 " + story.storyId + " 不一致，已按服务器状态恢复");
         }
-        if (value233) {
-          this.progress.setPending(value233, story4.storyId);
+        if (kind) {
+          this.progress.setPending(kind, story.storyId);
         } else {
           this.progress.clearPending();
         }
-        story5 = this.progress.snapshot().pending;
-        if (value233 && !value234) {
-          this.host.log("已恢复进行中的" + value233 + "任务");
+        story_2 = this.progress.snapshot().pending;
+        if (kind && !temp) {
+          this.host.log("已恢复进行中的" + kind + "任务");
         }
       } else {
         this.progress.markPendingSeen();
-        story5 = this.progress.snapshot().pending;
+        story_2 = this.progress.snapshot().pending;
       }
-      if (story4.finished) {
-        if (await this.blocked(arg238, "结算任务")) {
+      if (story.finished) {
+        if (await this.blocked(config, "结算任务")) {
           return true;
         }
-        const value232 = "settle:" + story4.storyId;
-        if (this.progress.activeBlock(value232)) {
+        const combined = "settle:" + story.storyId;
+        if (this.progress.activeBlock(combined)) {
           return true;
         }
         try {
-          await arg188.settleStory(story4.storyId);
+          await client.settleStory(story.storyId);
           let afterValues = null;
           try {
-            await delaySeconds(Math.max(1, arg238.verifyDelaySeconds));
-            afterValues = await arg188.queryValues();
+            await delaySeconds(Math.max(1, config.verifyDelaySeconds));
+            afterValues = await client.queryValues();
             this.progress.recordAttributes(afterValues);
           } catch (error) {
             this.host.log("任务已结算，但无法读取最新属性：" + (error instanceof Error ? error.message : String(error)));
           }
-          this.recordTaskTelemetry(story5, "settled", afterValues);
-          this.progress.markStorySettled(story4.storyId);
-          if (story5?.kind === "school" && arg238.schoolSelectionMode === "rotation" && arg238.schoolRotationEnabled) {
-            this.progress.advanceSchoolRotation(arg238.schoolRotationEvery);
-          } else if (story5) {
-            this.progress.increment(story5.kind);
+          this.recordTaskTelemetry(story_2, "settled", afterValues);
+          this.progress.markStorySettled(story.storyId);
+          if (story_2?.kind === "school" && config.schoolSelectionMode === "rotation" && config.schoolRotationEnabled) {
+            this.progress.advanceSchoolRotation(config.schoolRotationEvery);
+          } else if (story_2) {
+            this.progress.increment(story_2.kind);
           }
           this.progress.clearPending();
-          this.progress.clearBlock(value232);
+          this.progress.clearBlock(combined);
           if (afterValues) {
             this.host.updateStatus({
               values: afterValues,
               progress: this.progress.snapshot()
             });
           }
-          this.host.log("任务已结算并记录：" + story4.storyId);
-        } catch (value231) {
-          if (isIrrecoverableSettleError(value231)) {
-            this.progress.dismissStory(story4.storyId);
-            if (story5?.storyId === story4.storyId) {
+          this.host.log("任务已结算并记录：" + story.storyId);
+        } catch (error_2) {
+          if (isIrrecoverableSettleError(error_2)) {
+            this.progress.dismissStory(story.storyId);
+            if (story_2?.storyId === story.storyId) {
               this.progress.clearPending();
             }
-            this.progress.clearBlock(value232);
+            this.progress.clearBlock(combined);
             this.host.updateStatus({
               connected: true,
               error: null,
-              story: clearFinishedStoryDisplay(story4, true),
+              story: clearFinishedStoryDisplay(story, true),
               progress: this.progress.snapshot(),
               activity: "服务器残留任务已忽略，当前空闲"
             });
-            this.host.log("服务器已拒绝结算残留任务，按空闲处理：" + story4.storyId);
+            this.host.log("服务器已拒绝结算残留任务，按空闲处理：" + story.storyId);
             return true;
           }
-          this.progress.setBlock(value232, String(value231), arg238.settleRetrySeconds);
-          throw value231;
+          this.progress.setBlock(combined, String(error_2), config.settleRetrySeconds);
+          throw error_2;
         }
         return true;
       }
-      const value235 = {
-        activity: "任务进行中，剩余 " + story4.remainingSeconds + "s"
+      const statusPatch = {
+        activity: "任务进行中，剩余 " + story.remainingSeconds + "s"
       };
-      this.host.updateStatus(value235);
+      this.host.updateStatus(statusPatch);
       return true;
     }
-    return this.handleMissingPending(arg238, story5);
+    return this.handleMissingPending(config, story_2);
   }
-  publish(arg189, arg239, arg310, story6, arg5, arg6) {
-    this.petName = arg189.name;
-    const value236 = this.progress.snapshot();
-    const value237 = this.progress.storyWasSettled(story6.storyId) || this.progress.storyWasDismissed(story6.storyId);
-    const value238 = clearFinishedStoryDisplay(story6, value237);
-    const value239 = {
-      ...arg5,
-      ...arg6
+  publish(profile, fatigue, values, story, foodInventory, bathInventory) {
+    this.petName = profile.name;
+    const snapshot = this.progress.snapshot();
+    const temp = this.progress.storyWasSettled(story.storyId) || this.progress.storyWasDismissed(story.storyId);
+    const displayStory = clearFinishedStoryDisplay(story, temp);
+    const record = {
+      ...foodInventory,
+      ...bathInventory
     };
     this.host.updateStatus({
       connected: true,
       error: null,
       updatedAt: new Date().toISOString(),
-      profile: arg189,
+      profile: profile,
       interactions: this.interactions,
-      fatigue: arg239,
-      values: arg310,
-      story: value238,
-      inventory: value239,
-      progress: value236,
+      fatigue: fatigue,
+      values: values,
+      story: displayStory,
+      inventory: record,
+      progress: snapshot,
       account: {
         uin: this.host.uin,
         petId: this.host.getConfig().petId,
@@ -1938,11 +1935,11 @@ class AutomationController {
     if (!this.busy) {
       this.busy = true;
       try {
-        const value240 = await this.client();
-        const [value241, value242, value243, value244, value245] = await Promise.all([this.queryProfile(value240), value240.queryValues(), value240.queryStory(), value240.queryFoodInventory(), value240.queryBathInventory()]);
-        const value246 = await value240.queryFatigueStatus();
-        this.progress.recordAttributes(value242);
-        this.publish(value241, value246, value242, value243, value244, value245);
+        const temp = await this.client();
+        const [profile, petValues, story, foodInventory, bathInventory] = await Promise.all([this.queryProfile(temp), temp.queryValues(), temp.queryStory(), temp.queryFoodInventory(), temp.queryBathInventory()]);
+        const fatigue = await temp.queryFatigueStatus();
+        this.progress.recordAttributes(petValues);
+        this.publish(profile, fatigue, petValues, story, foodInventory, bathInventory);
         this.host.updateStatus({
           activity: "状态已刷新"
         });
@@ -1957,39 +1954,39 @@ class AutomationController {
     }
     this.busy = true;
     try {
-    const value247 = await this.client();
-    const [value248, value249, value250, value251] = await Promise.all([value247.querySchoolStage(), value247.queryWorkOverview(), value247.queryAdventureOptions(), value247.queryBathItems()]);
-    const [value252, value253] = await Promise.all([value247.querySchoolCourses(value248), Promise.all(value249.careers.map(async item39 => {
-      try {
-        return {
-          ...item39,
-          jobs: item39.available ? await value247.queryWorkJobs(item39.careerType) : []
-        };
-      } catch (error13) {
-        if (!isCareerRequirementError(error13)) {
-          throw error13;
+      const temp = await this.client();
+      const [profile, petValues, story, foodInventory] = await Promise.all([temp.querySchoolStage(), temp.queryWorkOverview(), temp.queryAdventureOptions(), temp.queryBathItems()]);
+      const [profile_2, petValues_2] = await Promise.all([temp.querySchoolCourses(profile), Promise.all(petValues.careers.map(async item => {
+        try {
+          return {
+            ...item,
+            jobs: item.available ? await temp.queryWorkJobs(item.careerType) : []
+          };
+        } catch (error) {
+          if (!isCareerRequirementError(error)) {
+            throw error;
+          }
+          return {
+            ...item,
+            available: false,
+            message: error instanceof Error ? error.message : String(error),
+            jobs: []
+          };
         }
-        return {
-          ...item39,
-          available: false,
-          message: error13 instanceof Error ? error13.message : String(error13),
-          jobs: []
-        };
-      }
-    }))]);
-    const value254 = {
-      currentCareerType: value249.currentCareerType,
-      lastSubEventType: value249.lastSubEventType
-    };
-    const value255 = {
-      stage: value248,
-      courses: value252,
-      careers: value253,
-      workOverview: value254,
-      adventures: value250,
-      bathItems: value251
-    };
-    return value255;
+      }))]);
+      const record = {
+        currentCareerType: petValues.currentCareerType,
+        lastSubEventType: petValues.lastSubEventType
+      };
+      const catalogs = {
+        stage: profile,
+        courses: profile_2,
+        careers: petValues_2,
+        workOverview: record,
+        adventures: story,
+        bathItems: foodInventory
+      };
+      return catalogs;
     } finally {
       this.busy = false;
     }
@@ -2000,8 +1997,8 @@ class AutomationController {
     }
     this.busy = true;
     try {
-      const config3 = this.host.getConfig();
-      if (!config3.enabled) {
+      const config = this.host.getConfig();
+      if (!config.enabled) {
         return null;
       }
       if (this.progress.rollover()) {
@@ -2010,141 +2007,141 @@ class AutomationController {
       this.host.updateStatus({
         activity: "正在检查宠物状态"
       });
-      const value264 = await this.client();
-      let [value265, values6, story10, foodInventory2, bathInventory3] = await Promise.all([this.queryProfile(value264), value264.queryValues(), value264.queryStory(), value264.queryFoodInventory(), value264.queryBathInventory()]);
-      const value266 = await value264.queryFatigueStatus();
-      this.progress.recordAttributes(values6);
-      this.publish(value265, value266, values6, story10, foodInventory2, bathInventory3);
-      this.host.log("状态：金币 " + values6.gold.toFixed(0) + "，心情 " + values6.feel.toFixed(0) + "，体力 " + values6.hunger.toFixed(0) + "，清洁 " + values6.clean.toFixed(0));
-      if (story10.finished && (await this.handleStory(value264, config3, story10))) {
+      const temp_5 = await this.client();
+      let [profile, petValues_3, story_4, foodInventory, bathInventory] = await Promise.all([this.queryProfile(temp_5), temp_5.queryValues(), temp_5.queryStory(), temp_5.queryFoodInventory(), temp_5.queryBathInventory()]);
+      const fatigue = await temp_5.queryFatigueStatus();
+      this.progress.recordAttributes(petValues_3);
+      this.publish(profile, fatigue, petValues_3, story_4, foodInventory, bathInventory);
+      this.host.log("状态：金币 " + petValues_3.gold.toFixed(0) + "，心情 " + petValues_3.feel.toFixed(0) + "，体力 " + petValues_3.hunger.toFixed(0) + "，清洁 " + petValues_3.clean.toFixed(0));
+      if (story_4.finished && (await this.handleStory(temp_5, config, story_4))) {
         return "story";
       }
-      if (config3.careEnabled && values6.hunger < config3.hungerThreshold && !this.progress.activeBlock("feed") && !(await this.blocked(config3, "喂食"))) {
+      if (config.careEnabled && petValues_3.hunger < config.hungerThreshold && !this.progress.activeBlock("feed") && !(await this.blocked(config, "喂食"))) {
         try {
-          if (foodInventory2.biscuits <= 0) {
-            if (!config3.autoBuySupplies) {
-              this.progress.setBlock("feed", "饼干不足且自动购买已关闭", config3.failureCooldownSeconds);
+          if (foodInventory.biscuits <= 0) {
+            if (!config.autoBuySupplies) {
+              this.progress.setBlock("feed", "饼干不足且自动购买已关闭", config.failureCooldownSeconds);
               return "feed_unavailable";
             }
-            await value264.buyFood(config3.foodPurchaseCount);
-            foodInventory2 = await value264.queryFoodInventory();
-            if (foodInventory2.biscuits <= 0) {
+            await temp_5.buyFood(config.foodPurchaseCount);
+            foodInventory = await temp_5.queryFoodInventory();
+            if (foodInventory.biscuits <= 0) {
               throw new QQPetError("购买饼干后库存仍为空");
             }
           }
-          await value264.feed();
-          await delaySeconds(config3.verifyDelaySeconds);
-          const values4 = await value264.queryValues();
-          if (values4.hunger <= values6.hunger) {
+          await temp_5.feed();
+          await delaySeconds(config.verifyDelaySeconds);
+          const petValues = await temp_5.queryValues();
+          if (petValues.hunger <= petValues_3.hunger) {
             throw new QQPetError("喂食后体力未增加");
           }
           this.progress.increment("feed");
           this.progress.clearBlock("feed");
-          this.host.log("自动喂食成功：" + values6.hunger.toFixed(0) + "→" + values4.hunger.toFixed(0));
-        } catch (error12) {
-          this.progress.setBlock("feed", error12 instanceof Error ? error12.message : String(error12), config3.failureCooldownSeconds);
-          throw error12;
+          this.host.log("自动喂食成功：" + petValues_3.hunger.toFixed(0) + "→" + petValues.hunger.toFixed(0));
+        } catch (error) {
+          this.progress.setBlock("feed", error instanceof Error ? error.message : String(error), config.failureCooldownSeconds);
+          throw error;
         }
         return "feed";
       }
-      if (config3.careEnabled && values6.clean < config3.cleanThreshold && !this.progress.activeBlock("wash") && !(await this.blocked(config3, "洗澡"))) {
+      if (config.careEnabled && petValues_3.clean < config.cleanThreshold && !this.progress.activeBlock("wash") && !(await this.blocked(config, "洗澡"))) {
         try {
-          let value256 = bathInventory3.bathBall > 0 ? "2" : "1";
-          if ((value256 === "2" ? bathInventory3.bathBall : bathInventory3.soap) <= 0) {
-            if (!config3.autoBuySupplies) {
-              this.progress.setBlock("wash", "洗护用品不足且自动购买已关闭", config3.failureCooldownSeconds);
+          let temp = bathInventory.bathBall > 0 ? "2" : "1";
+          if ((temp === "2" ? bathInventory.bathBall : bathInventory.soap) <= 0) {
+            if (!config.autoBuySupplies) {
+              this.progress.setBlock("wash", "洗护用品不足且自动购买已关闭", config.failureCooldownSeconds);
               return "wash_unavailable";
             }
-            value256 = "2";
-            const bathPurchase = await value264.buyBathItem(value256, config3.bathPurchaseCount);
+            temp = "2";
+            const bathPurchase = await temp_5.buyBathItem(temp, config.bathPurchaseCount);
             if (!bathPurchase.succeeded) {
               throw new QQPetError("购买洗护道具失败：" + (bathPurchase.result ? "result=" + bathPurchase.result : "未返回订单"));
             }
-            bathInventory3 = await value264.queryBathInventory();
-            if ((value256 === "2" ? bathInventory3.bathBall : bathInventory3.soap) <= 0) {
+            bathInventory = await temp_5.queryBathInventory();
+            if ((temp === "2" ? bathInventory.bathBall : bathInventory.soap) <= 0) {
               throw new QQPetError("购买洗护道具后库存仍为空");
             }
           }
-          await value264.useBathItem(value256);
-          await delaySeconds(config3.verifyDelaySeconds);
-          const values5 = await value264.queryValues();
-          if (values5.clean <= values6.clean) {
+          await temp_5.useBathItem(temp);
+          await delaySeconds(config.verifyDelaySeconds);
+          const petValues_2 = await temp_5.queryValues();
+          if (petValues_2.clean <= petValues_3.clean) {
             throw new QQPetError("洗澡后清洁值未增加");
           }
           this.progress.increment("wash");
           this.progress.clearBlock("wash");
-          this.host.log("自动洗澡成功：" + values6.clean.toFixed(0) + "→" + values5.clean.toFixed(0));
-        } catch (error13) {
-          this.progress.setBlock("wash", error13 instanceof Error ? error13.message : String(error13), config3.failureCooldownSeconds);
-          throw error13;
+          this.host.log("自动洗澡成功：" + petValues_3.clean.toFixed(0) + "→" + petValues_2.clean.toFixed(0));
+        } catch (error_2) {
+          this.progress.setBlock("wash", error_2 instanceof Error ? error_2.message : String(error_2), config.failureCooldownSeconds);
+          throw error_2;
         }
         return "wash";
       }
-      if (await this.maybeVisit(value264, config3, foodInventory2, bathInventory3)) {
+      if (await this.maybeVisit(temp_5, config, foodInventory, bathInventory)) {
         return "visit";
       }
-      if (await this.handleStory(value264, config3, story10)) {
+      if (await this.handleStory(temp_5, config, story_4)) {
         return "story";
       }
-      const value267 = fatigueAction(config3, value266);
-      if (value267 === "rest") {
-        const value257 = value266.tier === 12 ? "12 小时" : "8 小时";
-        const value258 = {
-          activity: "疲劳休息：已进入 " + value257 + "档"
+      const forcedAction = fatigueAction(config, fatigue);
+      if (forcedAction === "rest") {
+        const temp_2 = fatigue.tier === 12 ? "12 小时" : "8 小时";
+        const statusPatch = {
+          activity: "疲劳休息：已进入 " + temp_2 + "档"
         };
-        this.host.updateStatus(value258);
+        this.host.updateStatus(statusPatch);
         return "fatigue_rest";
       }
-      const value268 = value267 ?? this.decide(config3, values6);
-      if (!value268) {
+      const temp_6 = forcedAction ?? this.decide(config, petValues_3);
+      if (!temp_6) {
         this.host.updateStatus({
           activity: "空闲：今日任务已完成"
         });
         return null;
       }
-      if (await this.blocked(config3, value268 === "school" ? "学习" : value268 === "work" ? "打工" : "冒险")) {
-        return value268;
+      if (await this.blocked(config, temp_6 === "school" ? "学习" : temp_6 === "work" ? "打工" : "冒险")) {
+        return temp_6;
       }
-      if (value268 === "school") {
+      if (temp_6 === "school") {
         const progress = this.progress.snapshot();
-        const value259 = selectSchoolAttribute(config3, values6, progress.schoolRotationIndex);
-        const value260 = config3.schoolSelectionMode === "fixed" ? config3.courseSubEvent : 0;
-        const story7 = await value264.startSchool(value259, value260);
-        this.progress.setPending("school", story7.storyId, {
+        const attribute = selectSchoolAttribute(config, petValues_3, progress.schoolRotationIndex);
+        const temp_3 = config.schoolSelectionMode === "fixed" ? config.courseSubEvent : 0;
+        const story = await temp_5.startSchool(attribute, temp_3);
+        this.progress.setPending("school", story.storyId, {
           startedAt: new Date().toISOString(),
-          attribute: value259,
-          item: compactTask(story7.item),
-          beforeValues: attributeSnapshot(values6)
+          attribute: attribute,
+          item: compactTask(story.item),
+          beforeValues: attributeSnapshot(petValues_3)
         });
-        const value261 = {
+        const member = {
           physical: "力量",
           culture: "智力",
           art: "魅力"
-        }[value259];
-        this.host.log("已开始" + value261 + "学习“" + story7.item.name + "”" + (story7.storyId ? "，storyId=" + story7.storyId : ""));
-      } else if (value268 === "work") {
-        const value262 = config3.employFriend ? await this.findEmployableFriend(value264, config3) : null;
-        const story8 = await value264.startWork(config3.workCareerType, value262?.jobSubEvent ?? config3.workJobSubEvent, value262 ? {
-          uin: value262.target.uin,
-          petId: value262.target.petId
+        }[attribute];
+        this.host.log("已开始" + member + "学习“" + story.item.name + "”" + (story.storyId ? "，storyId=" + story.storyId : ""));
+      } else if (temp_6 === "work") {
+        const hireCandidate = config.employFriend ? await this.findEmployableFriend(temp_5, config) : null;
+        const story_2 = await temp_5.startWork(config.workCareerType, hireCandidate?.jobSubEvent ?? config.workJobSubEvent, hireCandidate ? {
+          uin: hireCandidate.target.uin,
+          petId: hireCandidate.target.petId
         } : undefined);
-        this.progress.setPending("work", story8.storyId, {
+        this.progress.setPending("work", story_2.storyId, {
           startedAt: new Date().toISOString(),
-          item: compactTask(story8.item),
-          beforeValues: attributeSnapshot(values6)
+          item: compactTask(story_2.item),
+          beforeValues: attributeSnapshot(petValues_3)
         });
-        const value263 = story8.hiredFriend && value262 ? "，已雇佣好友" + this.targetLabel(value262.target) + "（加成 " + (value262.bonus >= 0 ? "+" : "") + value262.bonus + "）" : "";
-        this.host.log("已开始打工“" + story8.item.name + "”" + value263 + (story8.storyId ? "，storyId=" + story8.storyId : ""));
+        const temp_4 = story_2.hiredFriend && hireCandidate ? "，已雇佣好友" + this.targetLabel(hireCandidate.target) + "（加成 " + (hireCandidate.bonus >= 0 ? "+" : "") + hireCandidate.bonus + "）" : "";
+        this.host.log("已开始打工“" + story_2.item.name + "”" + temp_4 + (story_2.storyId ? "，storyId=" + story_2.storyId : ""));
       } else {
-        const story9 = await value264.startAdventure(config3.adventureOption);
-        this.progress.setPending("adventure", story9.storyId, {
+        const story_3 = await temp_5.startAdventure(config.adventureOption);
+        this.progress.setPending("adventure", story_3.storyId, {
           startedAt: new Date().toISOString(),
-          item: compactTask(story9.item),
-          beforeValues: attributeSnapshot(values6)
+          item: compactTask(story_3.item),
+          beforeValues: attributeSnapshot(petValues_3)
         });
-        this.host.log("已开始冒险“" + story9.item.name + "”" + (story9.storyId ? "，storyId=" + story9.storyId : ""));
+        this.host.log("已开始冒险“" + story_3.item.name + "”" + (story_3.storyId ? "，storyId=" + story_3.storyId : ""));
       }
-      return value268;
+      return temp_6;
     } finally {
       this.host.updateStatus({
         progress: this.progress.snapshot()
@@ -2183,9 +2180,9 @@ const INITIAL_STATUS = {
   config: INITIAL_STATUS_CONFIG
 };
 class QQPetPlugin {
-  constructor(arg190 = "OneBot") {
-    this.runtimeName = arg190;
-    this.status.activity = "等待 " + arg190 + " 登录";
+  constructor(arg = "OneBot") {
+    this.runtimeName = arg;
+    this.status.activity = "等待 " + arg + " 登录";
   }
   context = null;
   configValue = INITIAL_CONFIG;
@@ -2202,40 +2199,40 @@ class QQPetPlugin {
     return this.context;
   }
   getConfig() {
-    const value269 = {
+    const record = {
       ...this.configValue
     };
-    return value269;
+    return record;
   }
   accountStatus() {
-    const value270 = !["", "AUTO", "YOUR_PET_ID"].includes(this.configValue.petId.trim().toUpperCase());
-    const value271 = {
+    const flag = !["", "AUTO", "YOUR_PET_ID"].includes(this.configValue.petId.trim().toUpperCase());
+    const petTarget = {
       uin: this.uin,
-      petId: value270 ? this.configValue.petId : "",
-      petIdReady: value270,
+      petId: flag ? this.configValue.petId : "",
+      petIdReady: flag,
       petName: this.status.account.petName
     };
-    return value271;
+    return petTarget;
   }
-  async init(arg191) {
-    const value273 = {
+  async init(context) {
+    const mkdirOptions = {
       recursive: true
     };
-    this.context = arg191;
-    fs.mkdirSync(arg191.dataPath, value273);
+    this.context = context;
+    fs.mkdirSync(context.dataPath, mkdirOptions);
     this.loadConfig();
     try {
-      const loginInfo4 = await arg191.actions.call("get_login_info", {}, arg191.adapterName, arg191.pluginManager.config);
-      this.uin = String(loginInfo4?.user_id ?? "");
-    } catch (value272) {
-      this.log("暂未取得当前 QQ：" + String(value272));
+      const loginInfo = await context.actions.call("get_login_info", {}, context.adapterName, context.pluginManager.config);
+      this.uin = String(loginInfo?.user_id ?? "");
+    } catch (error) {
+      this.log("暂未取得当前 QQ：" + String(error));
     }
-    const value274 = new ProgressStore(path.join(arg191.dataPath, "daily-progress.json"));
-    this.scheduler = new AutomationController(this, value274);
+    const progressStore = new ProgressStore(path.join(context.dataPath, "daily-progress.json"));
+    this.scheduler = new AutomationController(this, progressStore);
     this.updateStatus({
       account: this.accountStatus(),
       config: this.getConfig(),
-      progress: value274.snapshot()
+      progress: progressStore.snapshot()
     });
     if (this.configValue.enabled && this.configValue.autoStart) {
       this.scheduler.start();
@@ -2252,30 +2249,30 @@ class QQPetPlugin {
       this.configValue = normalizeConfig(JSON.parse(fs.readFileSync(this.ctx.configPath, "utf8")));
     } catch (error) {
       backupCorruptFile(this.ctx.configPath, error);
-      const value275 = {
+      const record = {
         ...DEFAULT_CONFIG
       };
-      this.configValue = value275;
+      this.configValue = record;
       this.saveConfig();
     }
   }
   saveConfig() {
-    const value276 = {
+    const mkdirOptions = {
       recursive: true
     };
     if (this.context) {
-      fs.mkdirSync(path.dirname(this.context.configPath), value276);
+      fs.mkdirSync(path.dirname(this.context.configPath), mkdirOptions);
       writeJsonAtomically(this.context.configPath, this.configValue);
     }
   }
-  updateConfig(arg192) {
-    const config4 = this.configValue;
+  updateConfig(partial) {
+    const config = this.configValue;
     this.configValue = normalizeConfig({
       ...this.configValue,
-      ...arg192
+      ...partial
     });
-    const value277 = ["visitEnabled", "visitFriends", "visitStrangers", "visitAutoCare", "visitMaxPerDay", "visitDelayMinMinutes", "visitDelayMaxMinutes", "otherCareDailyExperienceLimit", "visitCandidateScanLimit", "visitStrangerGroupIds"];
-    if (this.scheduler && value277.some(item40 => config4[item40] !== this.configValue[item40])) {
+    const list = ["visitEnabled", "visitFriends", "visitStrangers", "visitAutoCare", "visitMaxPerDay", "visitDelayMinMinutes", "visitDelayMaxMinutes", "otherCareDailyExperienceLimit", "visitCandidateScanLimit", "visitStrangerGroupIds"];
+    if (this.scheduler && list.some(item => config[item] !== this.configValue[item])) {
       this.scheduler.progress.clearBlock("visit");
     }
     this.saveConfig();
@@ -2283,11 +2280,11 @@ class QQPetPlugin {
       config: this.getConfig(),
       account: this.accountStatus()
     });
-    if (this.scheduler && config4.intervalSeconds !== this.configValue.intervalSeconds && this.scheduler.running) {
+    if (this.scheduler && config.intervalSeconds !== this.configValue.intervalSeconds && this.scheduler.running) {
       this.scheduler.stop();
       this.scheduler.start();
     }
-    if (this.scheduler && config4.enabled !== this.configValue.enabled) {
+    if (this.scheduler && config.enabled !== this.configValue.enabled) {
       if (this.configValue.enabled && this.configValue.autoStart) {
         this.scheduler.start();
       } else if (!this.configValue.enabled) {
@@ -2295,39 +2292,39 @@ class QQPetPlugin {
       }
     }
   }
-  replaceConfig(arg193) {
-    this.updateConfig(normalizeConfig(arg193));
+  replaceConfig(input) {
+    this.updateConfig(normalizeConfig(input));
   }
-  log(arg194) {
-    const value281 = {
+  log(message) {
+    const record = {
       hour12: false
     };
-    const value282 = Date.now();
-    const value283 = new Date(value282).toLocaleTimeString("zh-CN", value281);
-    const value284 = this.logTimes.get(arg194) ?? 0;
-    if (value282 - value284 < 600000) {
-      const value278 = (this.logCounts.get(arg194) ?? 1) + 1;
-      this.logCounts.set(arg194, value278);
-      this.logTimes.set(arg194, value282);
-      const value279 = "] " + arg194;
-      const value280 = this.logLines.findLastIndex(item41 => item41.includes(value279));
-      if (value280 >= 0) {
-        this.logLines.splice(value280, 1);
+    const timestamp = Date.now();
+    const temp_2 = new Date(timestamp).toLocaleTimeString("zh-CN", record);
+    const temp_3 = this.logTimes.get(message) ?? 0;
+    if (timestamp - temp_3 < 600000) {
+      const combined = (this.logCounts.get(message) ?? 1) + 1;
+      this.logCounts.set(message, combined);
+      this.logTimes.set(message, timestamp);
+      const combined_2 = "] " + message;
+      const temp = this.logLines.findLastIndex(input => input.includes(combined_2));
+      if (temp >= 0) {
+        this.logLines.splice(temp, 1);
       }
-      this.logLines.push("[" + value283 + "] " + arg194 + "（共 " + value278 + " 次）");
+      this.logLines.push("[" + temp_2 + "] " + message + "（共 " + combined + " 次）");
       return;
     }
-    this.logCounts.set(arg194, 1);
-    this.logTimes.set(arg194, value282);
-    const value285 = "[" + value283 + "] " + arg194;
-    this.logLines.push(value285);
+    this.logCounts.set(message, 1);
+    this.logTimes.set(message, timestamp);
+    const combined_3 = "[" + temp_2 + "] " + message;
+    this.logLines.push(combined_3);
     this.logLines = this.logLines.slice(-120);
-    this.context?.logger.info(arg194);
+    this.context?.logger.info(message);
   }
-  updateStatus(arg195) {
+  updateStatus(patch) {
     this.status = {
       ...this.status,
-      ...arg195
+      ...patch
     };
   }
   snapshot() {
@@ -2341,12 +2338,12 @@ class QQPetPlugin {
   }
 }
 class RuntimeAdapter {
-  constructor(arg196, arg240) {
-    this.client = arg196;
-    this.version = arg240;
+  constructor(input, input2) {
+    this.client = input;
+    this.version = input2;
   }
-  call(arg197, arg241 = {}) {
-    return this.client.call(arg197, arg241);
+  call(input, arg = {}) {
+    return this.client.call(input, arg);
   }
 }
 class NapCatRuntimeAdapter extends RuntimeAdapter {
@@ -2357,11 +2354,11 @@ class SnowLumaRuntimeAdapter extends RuntimeAdapter {
   kind = "snowluma";
   runtimeName = "SnowLuma";
 }
-function detectRuntimeKind(arg198) {
-  const value286 = String(arg198.app_name ?? "").toLowerCase();
-  if (value286.includes("snowluma")) {
+function detectRuntimeKind(input) {
+  const temp = String(input.app_name ?? "").toLowerCase();
+  if (temp.includes("snowluma")) {
     return "snowluma";
-  } else if (value286.includes("napcat")) {
+  } else if (temp.includes("napcat")) {
     return "napcat";
   } else {
     return null;
@@ -2401,74 +2398,74 @@ function createLogger(dataDir, options = {}) {
   const backups = Math.max(1, Math.min(20, Math.trunc(options.backups ?? DEFAULT_LOG_BACKUPS)));
   const now = options.now ?? (() => new Date());
   let writeFailureReported = false;
-  const value296 = arg199 => {
+  const handler = input => {
     if (!writeFailureReported) {
       writeFailureReported = true;
-      process.stderr.write("[QQPet] 本地日志写入失败：" + formatLogError(arg199) + "\n");
+      process.stderr.write("[QQPet] 本地日志写入失败：" + formatLogError(input) + "\n");
     }
   };
-  const value297 = arg1100 => {
-    let value290 = 0;
+  const handler_2 = input => {
+    let number_2 = 0;
     try {
-      value290 = fs.statSync(logPath).size;
-    } catch (value287) {
-      if (value287.code !== "ENOENT") {
-        throw value287;
+      number_2 = fs.statSync(logPath).size;
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        throw error;
       }
     }
-    if (value290 + arg1100 <= maxBytes) {
+    if (number_2 + input <= maxBytes) {
       return;
     }
-    const value291 = logPath + "." + backups;
-    if (fs.existsSync(value291)) {
-      fs.unlinkSync(value291);
+    const combined_2 = logPath + "." + backups;
+    if (fs.existsSync(combined_2)) {
+      fs.unlinkSync(combined_2);
     }
-    for (let value289 = backups - 1; value289 >= 1; value289 -= 1) {
-      const value288 = logPath + "." + value289;
-      if (fs.existsSync(value288)) {
-        fs.renameSync(value288, logPath + "." + (value289 + 1));
+    for (let number = backups - 1; number >= 1; number -= 1) {
+      const combined = logPath + "." + number;
+      if (fs.existsSync(combined)) {
+        fs.renameSync(combined, logPath + "." + (number + 1));
       }
     }
     if (fs.existsSync(logPath)) {
       fs.renameSync(logPath, logPath + ".1");
     }
   };
-  const value298 = (arg1101, arg242, items35) => {
-    const value294 = items35.length ? " " + items35.map(formatLogError).join(" ") : "";
-    const value295 = "[" + now().toISOString() + "] [" + arg1101 + "] " + formatLogError(arg242) + value294 + "\n";
-    process.stdout.write(value295);
+  const handler_3 = (input, input2, list) => {
+    const temp = list.length ? " " + list.map(formatLogError).join(" ") : "";
+    const combined = "[" + now().toISOString() + "] [" + input + "] " + formatLogError(input2) + temp + "\n";
+    process.stdout.write(combined);
     try {
-      const value292 = {
+      const mkdirOptions = {
         recursive: true,
         mode: 448
       };
-      fs.mkdirSync(logDir, value292);
-      value297(Buffer.byteLength(value295));
-      fs.appendFileSync(logPath, value295, {
+      fs.mkdirSync(logDir, mkdirOptions);
+      handler_2(Buffer.byteLength(combined));
+      fs.appendFileSync(logPath, combined, {
         encoding: "utf8",
         mode: 384
       });
       try {
         fs.chmodSync(logPath, 384);
       } catch {}
-    } catch (value293) {
-      value296(value293);
+    } catch (error) {
+      handler(error);
     }
   };
   return {
     filePath: logPath,
-    debug: (arg1102, ...arg243) => value298("DEBUG", arg1102, arg243),
-    info: (arg1103, ...arg244) => value298("INFO", arg1103, arg244),
-    warn: (arg1104, ...arg245) => value298("WARN", arg1104, arg245),
-    error: (arg1105, ...arg246) => value298("ERROR", arg1105, arg246)
+    debug: (input, ...arg) => handler_3("DEBUG", input, arg),
+    info: (input, ...arg) => handler_3("INFO", input, arg),
+    warn: (input, ...arg) => handler_3("WARN", input, arg),
+    error: (input, ...arg) => handler_3("ERROR", input, arg)
   };
 }
 class OneBotError extends Error {
-  constructor(arg1106, arg247, arg311 = 0, arg4 = -1) {
-    super(arg1106);
-    this.action = arg247;
-    this.httpStatus = arg311;
-    this.retcode = arg4;
+  constructor(input, input2, arg = 0, arg_2 = -1) {
+    super(input);
+    this.action = input2;
+    this.httpStatus = arg;
+    this.retcode = arg_2;
     this.name = "OneBotActionError";
   }
 }
@@ -2585,19 +2582,19 @@ function serveStaticFile(response, filePath) {
   try {
     stat = fs.statSync(filePath);
   } catch {
-    const value299 = {
+    const record = {
       code: -1,
       message: "文件不存在"
     };
-    sendJson(response, 404, value299);
+    sendJson(response, 404, record);
     return;
   }
   if (!stat.isFile()) {
-    const value300 = {
+    const record_2 = {
       code: -1,
       message: "文件不存在"
     };
-    sendJson(response, 404, value300);
+    sendJson(response, 404, record_2);
     return;
   }
   response.writeHead(200, {
@@ -2649,12 +2646,12 @@ function createWebServer(plugin, options) {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     try {
       if (method === "GET" && url.pathname === "/healthz") {
-        const value301 = {
+        const record = {
           status: "ok",
           runtime: options.runtimeKind,
           uin: options.uin
         };
-        sendJson(response, 200, value301);
+        sendJson(response, 200, record);
         return;
       }
       if (url.pathname.startsWith("/api/") && !isAuthorizedRequest(request, options.apiToken)) {
@@ -2682,15 +2679,13 @@ function createWebServer(plugin, options) {
         } catch {
           assetPath = "";
         }
-        const resolvedAssetPath = assetPath && !assetPath.includes("\0") && !assetPath.includes("\\")
-          ? resolveStaticAssetPath(options.webuiPath, assetPath)
-          : null;
+        const resolvedAssetPath = assetPath && !assetPath.includes("\0") && !assetPath.includes("\\") ? resolveStaticAssetPath(options.webuiPath, assetPath) : null;
         if (!resolvedAssetPath) {
-          const value302 = {
+          const record_2 = {
             code: -1,
             message: "静态文件路径无效"
           };
-          sendJson(response, 400, value302);
+          sendJson(response, 400, record_2);
           return;
         }
         serveStaticFile(response, resolvedAssetPath);
@@ -2727,8 +2722,8 @@ function createWebServer(plugin, options) {
         return;
       }
       if (method === "POST" && url.pathname === "/api/run-once") {
-        const value303 = await plugin.scheduler?.runOnce();
-        if (value303 === null) {
+        const temp = await plugin.scheduler?.runOnce();
+        if (temp === null) {
           sendJson(response, 409, {
             code: -1,
             message: "当前已有请求执行中，请稍后再试"
@@ -2738,7 +2733,7 @@ function createWebServer(plugin, options) {
         sendJson(response, 200, {
           code: 0,
           data: {
-            action: value303,
+            action: temp,
             status: plugin.snapshot()
           }
         });
@@ -2754,7 +2749,7 @@ function createWebServer(plugin, options) {
         return;
       }
       if (method === "POST" && url.pathname === "/api/automation/stop") {
-        const changed = await plugin.scheduler?.stopAndWait() ?? false;
+        const changed = (await plugin.scheduler?.stopAndWait()) ?? false;
         sendJson(response, 200, {
           code: 0,
           data: {
@@ -2770,16 +2765,16 @@ function createWebServer(plugin, options) {
         });
         return;
       }
-      const value304 = {
+      const record_3 = {
         code: -1,
         message: "接口不存在"
       };
-      sendJson(response, 404, value304);
-    } catch (error14) {
-      const value305 = error14 instanceof Error ? error14.message : String(error14);
-      sendJson(response, value305 === "请求体过大" ? 413 : 500, {
+      sendJson(response, 404, record_3);
+    } catch (error) {
+      const temp_2 = error instanceof Error ? error.message : String(error);
+      sendJson(response, temp_2 === "请求体过大" ? 413 : 500, {
         code: -1,
-        message: value305
+        message: temp_2
       });
     }
   });
@@ -2827,10 +2822,10 @@ async function main() {
   }
   const dataRoot = process.env.QQPET_DATA_DIR?.trim() ? path.resolve(process.env.QQPET_DATA_DIR) : path.join(os.homedir(), ".qqpet-miku");
   const accountDataDir = path.join(dataRoot, runtime.kind, uin);
-  const value307 = {
+  const mkdirOptions = {
     recursive: true
   };
-  fs.mkdirSync(accountDataDir, value307);
+  fs.mkdirSync(accountDataDir, mkdirOptions);
   const logger = createLogger(accountDataDir);
   const pluginContext = {
     actions: {
@@ -2889,13 +2884,13 @@ async function main() {
   });
   let stopping = false;
   const shutdown = async () => {
-    const value306 = {
+    const record = {
       type: "stopping",
       pid: process.pid
     };
     if (!stopping) {
       stopping = true;
-      sendDesktopEvent(value306);
+      sendDesktopEvent(record);
       await plugin.cleanup();
       await new Promise(resolve3 => server.close(() => resolve3()));
       sendDesktopEvent({
@@ -2904,14 +2899,14 @@ async function main() {
       });
     }
   };
-  const value308 = {
+  const record = {
     input: process.stdin,
     terminal: false
   };
   if (isDesktopMode()) {
-    readline.createInterface(value308).on("line", arg1107 => {
+    readline.createInterface(record).on("line", input => {
       try {
-        if (JSON.parse(arg1107).command === "shutdown") {
+        if (JSON.parse(input).command === "shutdown") {
           shutdown().then(() => process.exit(0));
         }
       } catch {}
@@ -2931,27 +2926,4 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exitCode = 1;
   });
 }
-export {
-  AutomationController,
-  DEFAULT_CONFIG,
-  ProgressStore,
-  QQPetPlugin,
-  compareEmployableFriends,
-  compareRewardPerSecond,
-  createApiToken,
-  createWebServer,
-  decideNextTask,
-  fatigueAction,
-  isAdventureWindowOpen,
-  isIrrecoverableSettleError,
-  isWithinTimeWindow,
-  normalizeConfig,
-  parseDurationSeconds,
-  parseFatigueStatus,
-  parseRewardAmount,
-  resolveStaticAssetPath,
-  rotateSchoolAttribute,
-  selectSchoolAttribute,
-  selectSchoolOrWork,
-  writeJsonAtomically
-};
+export { AutomationController, DEFAULT_CONFIG, ProgressStore, QQPetPlugin, compareEmployableFriends, compareRewardPerSecond, createApiToken, createWebServer, decideNextTask, fatigueAction, isAdventureWindowOpen, isIrrecoverableSettleError, isWithinTimeWindow, normalizeConfig, parseDurationSeconds, parseFatigueStatus, parseRewardAmount, resolveStaticAssetPath, rotateSchoolAttribute, selectSchoolAttribute, selectSchoolOrWork, writeJsonAtomically };
