@@ -37,6 +37,7 @@ type Catalogs = {
   adventures: CatalogOption[];
   bathItems: CatalogOption[];
 };
+type TelemetrySummary = { kind: string; name: string; reward: string; count: number; elapsedSeconds: number };
 
 declare global {
   interface Window {
@@ -277,8 +278,25 @@ function App() {
   const targetAttribute = pending?.kind === 'school' && pending.attribute ? pending.attribute : activeAttribute;
   const expectedItem = pending?.kind === 'school' && pending.item ? pending.item : selectedCourse;
   const telemetry = (progress.telemetry || []).filter((item: AnyRecord) => item?.status === 'settled').slice(-30).reverse();
-  const telemetryItems = pending ? [{ ...pending, status: 'running', elapsedSeconds: Math.max(0, Math.round((now - Date.parse(pending.startedAt || pending.createdAt || new Date().toISOString())) / 1000)) }, ...telemetry] : telemetry;
   const totalGain = telemetry.reduce((sum: number, item: AnyRecord) => sum + Object.values(item.delta || {}).reduce((value: number, delta) => value + Math.max(0, Number(delta) || 0), 0), 0);
+  const telemetryReward = (item: AnyRecord) => {
+    const gains = Object.entries({ strength: '力量', intelligence: '智力', charm: '魅力' })
+      .map(([key, label]) => [label, Number(item.delta?.[key] || 0)] as const)
+      .filter(([, value]) => value !== 0)
+      .map(([label, value]) => `${label} ${value > 0 ? '+' : ''}${formatNumber(value, 1)}`);
+    if (gains.length) return gains.join(' · ');
+    return String(item.item?.reward || '').match(/(?:力量|智力|魅力|金币)\s*\+?\d+(?:\.\d+)?/g)?.join(' · ') || '已结算';
+  };
+  const telemetrySummary = Object.values(telemetry.reduce((groups: Record<string, TelemetrySummary>, item: AnyRecord) => {
+    const name = item.item?.name || ({ school: '学习', work: '打工', adventure: '冒险' } as AnyRecord)[item.kind] || item.kind || '任务';
+    const reward = telemetryReward(item);
+    const key = `${item.kind}|${name}|${reward}`;
+    const group = groups[key] || { kind: item.kind || 'task', name, reward, count: 0, elapsedSeconds: 0 };
+    group.count += 1;
+    group.elapsedSeconds += Number(item.elapsedSeconds) || 0;
+    groups[key] = group;
+    return groups;
+  }, {} as Record<string, TelemetrySummary>)) as TelemetrySummary[];
   const storyRemaining = story.storyId && !story.finished ? Math.max(0, Number(story.remainingSeconds || 0) - Math.max(0, Math.floor((now - Date.parse(state.updatedAt || new Date().toISOString())) / 1000))) : 0;
   const modeLabel = ({ lowest: '动态补最低属性', rotation: `每 ${config.schoolRotationEvery || 1} 次轮换`, fixed: '固定属性' } as AnyRecord)[String(config.schoolSelectionMode)] || String(config.schoolSelectionMode || '--');
 
@@ -438,23 +456,19 @@ function App() {
             </LayerCard.Primary>
           </LayerCard>
 
-          {telemetryItems.length ? <LayerCard className="overflow-x-auto p-0">
-            <SectionHeader title="成长遥测" description="任务结算前后属性、实际耗时与目录收益" badge={<Badge variant="purple">{pending ? `${telemetry.length} 次结算 · 当前任务进行中` : `${telemetry.length} 次结算 · 属性增量 ${formatNumber(totalGain, 1)}`}</Badge>} />
-            <Table layout="fixed">
-              <colgroup><col className="w-[28%]" /><col className="w-[28%]" /><col className="w-[44%]" /></colgroup>
-              <Table.Header variant="compact"><Table.Row><Table.Head>任务</Table.Head><Table.Head>耗时与收益</Table.Head><Table.Head>属性变化</Table.Head></Table.Row></Table.Header>
-              <Table.Body>
-              {telemetryItems.map((item: AnyRecord, index: number) => {
-                const name = item.item?.name || ({ school: '学习', work: '打工', adventure: '冒险' } as AnyRecord)[item.kind] || item.kind || '任务';
-                const delta = item.delta ? Object.entries({ strength: '力量', intelligence: '智力', charm: '魅力' }).map(([key, label]) => `${label} ${Number(item.delta[key] || 0) >= 0 ? '+' : ''}${formatNumber(item.delta[key], 1)}`).join(' · ') : '属性快照缺失';
-                return <Table.Row key={`${item.startedAt || item.createdAt || index}-${index}`}>
-                  <Table.Cell><Text bold>{name}{item.attribute ? ` · ${attributeNames[item.attribute] || item.attribute}` : ''}</Text></Table.Cell>
-                  <Table.Cell><Text size="xs" variant="secondary">{[item.kind, item.elapsedSeconds ? `${item.elapsedSeconds}s` : '耗时未知', item.item?.reward || '收益未知'].filter(Boolean).join(' · ')}</Text></Table.Cell>
-                  <Table.Cell><Text size="sm" variant={item.status === 'running' ? 'secondary' : 'success'} bold>{item.status === 'running' ? '等待结算后记录实际属性增量' : delta}</Text></Table.Cell>
-                </Table.Row>;
-              })}
-              </Table.Body>
-            </Table>
+          {(pending || telemetrySummary.length) ? <LayerCard>
+            <SectionHeader title="成长遥测" description="按任务与实际收益汇总；悬停徽章可查看累计耗时" badge={<Badge variant="purple">{pending ? `${telemetry.length} 次结算 · 当前任务进行中` : `${telemetry.length} 次结算 · 属性增量 ${formatNumber(totalGain, 1)}`}</Badge>} />
+            <LayerCard.Primary className="flex flex-wrap gap-2">
+              {pending ? <Badge variant="blue">
+                <span title={`${pending.item?.name || '当前任务'} · 已进行 ${duration(Math.max(0, Math.round((now - Date.parse(pending.startedAt || pending.createdAt || new Date().toISOString())) / 1000)))}`}>进行中 · {pending.item?.name || ({ school: '学习', work: '打工', adventure: '冒险' } as AnyRecord)[pending.kind] || '任务'}{pending.attribute ? ` · ${attributeNames[pending.attribute] || pending.attribute}` : ''}</span>
+              </Badge> : null}
+              {telemetrySummary.map((item) => <Badge
+                key={`${item.kind}-${item.name}-${item.reward}`}
+                variant={item.kind === 'school' ? 'blue' : item.kind === 'work' ? 'green' : item.kind === 'adventure' ? 'orange' : 'neutral'}
+              >
+                <span title={`${item.name} · ${item.reward} · ${item.count} 次 · 累计耗时 ${duration(item.elapsedSeconds)}`}>{item.name} · {item.reward} · {item.count} 次</span>
+              </Badge>)}
+            </LayerCard.Primary>
           </LayerCard> : null}
           </div>
 
