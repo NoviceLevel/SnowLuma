@@ -126,20 +126,20 @@ function MetricCard({
   detailTone?: 'secondary' | 'success' | 'error';
 }) {
   return (
-    <LayerCard className="flex h-full min-h-[6.5rem] min-w-0 flex-col justify-between gap-2 p-3 sm:p-4">
+    <LayerCard className="flex h-full min-h-[7.5rem] min-w-0 flex-col justify-between gap-2 p-3 sm:p-4">
       <div className="flex min-h-5 min-w-0 items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <Text size="xs" variant="secondary" truncate>{label}</Text>
+          <Text size="sm" variant="secondary" truncate>{label}</Text>
         </div>
         {(badge || icon) ? <div className="shrink-0">{badge || icon}</div> : null}
       </div>
-      <div className="min-w-0">
-        <Text as="span" variant="heading2" className="block break-words tabular-nums leading-tight">{value}</Text>
+      <div className="min-w-0 py-0.5">
+        <Text as="span" variant="heading1" className="block break-words tabular-nums leading-none tracking-tight">{value}</Text>
       </div>
-      <div className="min-h-4 min-w-0">
+      <div className="min-h-5 min-w-0">
         {detail != null && detail !== ''
-          ? <Text size="xs" variant={detailTone} className="block break-words leading-snug">{detail}</Text>
-          : <span aria-hidden="true" className="block h-4" />}
+          ? <Text size="sm" variant={detailTone} className="block break-words leading-snug" bold={detailTone === 'success'}>{detail}</Text>
+          : <span aria-hidden="true" className="block h-5" />}
       </div>
     </LayerCard>
   );
