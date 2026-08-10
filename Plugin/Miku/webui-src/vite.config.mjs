@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +25,7 @@ export default defineConfig({
   root: sourceDir,
   base: '/static/',
   publicDir: false,
-  plugins: [cleanGeneratedAssets, react()],
+  plugins: [cleanGeneratedAssets, tailwindcss(), react()],
   build: {
     outDir: outputDir,
     emptyOutDir: false,

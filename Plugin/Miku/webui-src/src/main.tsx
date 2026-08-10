@@ -4,10 +4,11 @@ import { Dialog, DialogClose, DialogDescription, DialogRoot, DialogTitle, Dialog
 import { Input } from '@cloudflare/kumo/components/input';
 import { LayerCard } from '@cloudflare/kumo/components/layer-card';
 import { Select } from '@cloudflare/kumo/components/select';
+import { Surface } from '@cloudflare/kumo/components/surface';
 import { Switch } from '@cloudflare/kumo/components/switch';
 import { Text } from '@cloudflare/kumo/components/text';
 import { Toasty, createKumoToastManager } from '@cloudflare/kumo/components/toast';
-import '@cloudflare/kumo/styles/standalone';
+import './styles.css';
 import {
   ArrowClockwise,
   Eye,
@@ -126,24 +127,24 @@ function DefinitionList({ items }: { items: Array<[string, React.ReactNode]> }) 
 
 function CatalogPreview({ item, fallback }: { item?: CatalogOption; fallback: string }) {
   return (
-    <LayerCard className="col-span-full">
-      <LayerCard.Primary className="flex items-center gap-3 p-3">
+    <Surface className="col-span-full rounded-lg p-3">
+      <div className="flex items-center gap-3">
         {item?.iconUrl ? <img src={item.iconUrl} alt="" width="42" height="42" className="size-10 object-contain" /> : <Sparkle size={36} className="text-kumo-subtle" />}
         <div className="min-w-0">
           <div className="truncate"><Text bold>{item?.name || fallback}</Text></div>
           <div className="truncate"><Text size="xs" variant="secondary">{item ? [item.careerName, item.duration, item.reward].filter(Boolean).join(' · ') : '等待目录同步'}</Text></div>
         </div>
-      </LayerCard.Primary>
-    </LayerCard>
+      </div>
+    </Surface>
   );
 }
 
 function SettingSection({ title, children, wide = false }: { title: string; children: React.ReactNode; wide?: boolean }) {
   return (
-    <LayerCard className={wide ? 'lg:col-span-2' : ''}>
-      <LayerCard.Secondary><Text as="h3" variant="heading3">{title}</Text></LayerCard.Secondary>
-      <LayerCard.Primary className="grid grid-cols-1 gap-4 sm:grid-cols-2">{children}</LayerCard.Primary>
-    </LayerCard>
+    <Surface className={`grid grid-cols-1 gap-4 rounded-lg p-4 md:grid-cols-2 ${wide ? 'col-span-full' : ''}`}>
+      <div className="col-span-full"><Text as="h3" variant="heading3">{title}</Text></div>
+      {children}
+    </Surface>
   );
 }
 
@@ -270,9 +271,9 @@ function App() {
 
   return (
     <Toasty toastManager={toastManager}>
-      <main className="mx-auto flex max-w-7xl flex-col gap-4 p-3 sm:p-5">
+      <main className="mx-auto flex max-w-[1400px] flex-col gap-4 p-3">
         <LayerCard>
-          <LayerCard.Primary className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center">
+          <LayerCard.Primary className="flex flex-col gap-4 p-5 xl:flex-row">
             <DialogRoot>
               <DialogTrigger render={(props) => (
                 <Button {...props} id="pet-portrait" variant="ghost" shape="square" aria-label="查看宠物高清立绘" className="relative size-24 shrink-0 overflow-hidden">
@@ -309,14 +310,14 @@ function App() {
                 <Badge variant="neutral">性格 {profile.personality || '--'}</Badge>
               </div>
             </div>
-            <div className="flex shrink-0 flex-col items-start gap-2 lg:items-end">
+            <div className="flex shrink-0 flex-col items-start gap-2">
               <Badge variant={connected ? 'green' : 'orange'}>{connected ? '已连接' : '未连接'}</Badge>
               <Text size="xs" variant="secondary">{state.updatedAt ? `同步于 ${new Date(state.updatedAt).toLocaleTimeString('zh-CN', { hour12: false })}` : '等待首次同步'}</Text>
             </div>
           </LayerCard.Primary>
         </LayerCard>
 
-        <section className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6" aria-label="宠物状态">
+        <section className="grid grid-cols-2 gap-3 md:grid-cols-2 xl:grid-cols-6" aria-label="宠物状态">
           <MetricCard label="金币" value={formatNumber(values.gold)} icon={selectedCourse?.rewardIconUrl ? <img src={selectedCourse.rewardIconUrl} alt="" className="size-5 object-contain" /> : undefined} />
           <MetricCard label="心情" value={formatNumber(values.feel)} />
           <MetricCard label="体力" value={formatNumber(values.hunger)} />
@@ -332,8 +333,8 @@ function App() {
           <MetricCard label="疲劳" value={state.fatigue?.fatigued === true ? `是 · ${state.fatigue.tier} 小时档` : state.fatigue?.fatigued === false ? '否' : '未知'} />
         </section>
 
-        <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <LayerCard className="lg:col-span-2">
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <LayerCard className="col-span-full">
             <SectionHeader title="自动托管" description="按当前设置自动照顾宠物并执行任务" badge={<Badge variant={automationRunning ? 'green' : 'neutral'}>{automationRunning ? '运行中' : '已停止'}</Badge>} />
             <LayerCard.Primary className="flex flex-wrap items-center gap-2">
               <Button id="start" variant={automationRunning ? 'destructive' : 'primary'} icon={automationRunning ? <Power /> : <Play />}>{automationRunning ? '停止' : '启动'}</Button>
@@ -365,7 +366,7 @@ function App() {
             ]} /></LayerCard.Primary>
           </LayerCard>
 
-          <LayerCard className="lg:col-span-2">
+          <LayerCard className="col-span-full">
             <SectionHeader title="今日进度" />
             <LayerCard.Primary className="flex flex-wrap gap-2">
               {([['school', '学习'], ['work', '打工'], ['adventure', '冒险'], ['feed', '喂食'], ['wash', '洗澡'], ['visitFriend', '好友走访'], ['visitStranger', '陌生人走访'], ['careOther', '照顾别人']] as const).map(([key, label]) => <Badge key={key} variant="neutral">{label} {progress.counts?.[key] || 0}</Badge>)}
@@ -373,49 +374,51 @@ function App() {
             </LayerCard.Primary>
           </LayerCard>
 
-          {telemetryItems.length ? <LayerCard className="lg:col-span-2">
+          {telemetryItems.length ? <LayerCard className="col-span-full">
             <SectionHeader title="成长遥测" description="任务结算前后属性、实际耗时与目录收益" badge={<Badge variant="purple">{pending ? `${telemetry.length} 次结算 · 当前任务进行中` : `${telemetry.length} 次结算 · 属性增量 ${formatNumber(totalGain, 1)}`}</Badge>} />
             <LayerCard.Primary className="grid gap-2">
               {telemetryItems.map((item: AnyRecord, index: number) => {
                 const name = item.item?.name || ({ school: '学习', work: '打工', adventure: '冒险' } as AnyRecord)[item.kind] || item.kind || '任务';
                 const delta = item.delta ? Object.entries({ strength: '力量', intelligence: '智力', charm: '魅力' }).map(([key, label]) => `${label} ${Number(item.delta[key] || 0) >= 0 ? '+' : ''}${formatNumber(item.delta[key], 1)}`).join(' · ') : '属性快照缺失';
-                return <LayerCard key={`${item.startedAt || item.createdAt || index}-${index}`}><LayerCard.Primary className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)] md:items-center">
+                return <Surface key={`${item.startedAt || item.createdAt || index}-${index}`} className="rounded-lg p-3"><div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)]">
                   <div className="truncate"><Text bold>{name}{item.attribute ? ` · ${attributeNames[item.attribute] || item.attribute}` : ''}</Text></div>
                   <div className="truncate"><Text size="xs" variant="secondary">{[item.kind, item.elapsedSeconds ? `${item.elapsedSeconds}s` : '耗时未知', item.item?.reward || '收益未知'].filter(Boolean).join(' · ')}</Text></div>
                   <Text size="sm" variant={item.status === 'running' ? 'secondary' : 'success'} bold>{item.status === 'running' ? '等待结算后记录实际属性增量' : delta}</Text>
-                </LayerCard.Primary></LayerCard>;
+                </div></Surface>;
               })}
             </LayerCard.Primary>
           </LayerCard> : null}
 
-          {profile.medals?.length ? <LayerCard className="lg:col-span-2">
+          {profile.medals?.length ? <LayerCard className="col-span-full">
             <SectionHeader title="我的徽章" description="全部徽章、获得状态与佩戴状态" badge={<Badge variant="purple">{profile.medals.filter((item: AnyRecord) => item.acquired).length}/{profile.medals.length} 枚</Badge>} />
-            <LayerCard.Primary className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {profile.medals.map((item: AnyRecord) => <LayerCard key={item.id} className={item.acquired ? '' : 'opacity-50 grayscale'} title={[item.requirement, item.description].filter(Boolean).join('\n')}><LayerCard.Primary className="flex items-center gap-3 p-3">
+            <LayerCard.Primary className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {profile.medals.map((item: AnyRecord) => <Surface key={item.id} className={`rounded-lg p-3 ${item.acquired ? '' : 'opacity-50 grayscale'}`} title={[item.requirement, item.description].filter(Boolean).join('\n')}>
+                <div className="flex items-center gap-3">
                 <img src={item.imageUrl} alt={item.name} loading="lazy" className="size-14 object-contain" />
                 <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><div className="truncate"><Text bold>{item.name}</Text></div>{item.equipped ? <Badge variant="purple">已佩戴</Badge> : null}</div><div className="truncate"><Text size="xs" variant="secondary">{[item.category, item.progress].filter(Boolean).join(' · ')}</Text></div></div>
-              </LayerCard.Primary></LayerCard>)}
+                </div>
+              </Surface>)}
             </LayerCard.Primary>
           </LayerCard> : null}
 
-          {state.interactions?.length ? <LayerCard className="lg:col-span-2">
+          {state.interactions?.length ? <LayerCard className="col-span-full">
             <SectionHeader title="互动消息" description="服务器返回的最近互动记录" badge={<Badge variant="purple">{state.interactions.length} 条</Badge>} />
             <LayerCard.Primary className="grid max-h-96 gap-2 overflow-auto">
-              {state.interactions.map((item: AnyRecord) => <LayerCard key={item.id}><LayerCard.Primary className="p-3"><div className="flex flex-wrap items-center justify-between gap-2"><Text bold>{item.petName || `QQ ${item.uin || '未知'}`}</Text><Text size="xs" variant="secondary">{[({ 1: '喂食', 2: '踩踩', 5: '洗澡', 6: '火花', 6400: '打工', 6700: '冒险' } as AnyRecord)[item.eventType] || '互动', item.uin ? `QQ ${item.uin}` : '', item.timestamp ? new Date(item.timestamp).toLocaleString('zh-CN', { hour12: false }) : '时间未知'].filter(Boolean).join(' · ')}</Text></div><div className="mt-2"><Text size="sm">{item.text || ''}</Text></div></LayerCard.Primary></LayerCard>)}
+              {state.interactions.map((item: AnyRecord) => <Surface key={item.id} className="rounded-lg p-3"><div className="flex flex-wrap items-center justify-between gap-2"><Text bold>{item.petName || `QQ ${item.uin || '未知'}`}</Text><Text size="xs" variant="secondary">{[({ 1: '喂食', 2: '踩踩', 5: '洗澡', 6: '火花', 6400: '打工', 6700: '冒险' } as AnyRecord)[item.eventType] || '互动', item.uin ? `QQ ${item.uin}` : '', item.timestamp ? new Date(item.timestamp).toLocaleString('zh-CN', { hour12: false }) : '时间未知'].filter(Boolean).join(' · ')}</Text></div><div className="mt-2"><Text size="sm">{item.text || ''}</Text></div></Surface>)}
             </LayerCard.Primary>
           </LayerCard> : null}
 
-          {catalogs.careers.length ? <LayerCard className="lg:col-span-2">
+          {catalogs.careers.length ? <LayerCard className="col-span-full">
             <SectionHeader title="职业树" description="职业名称、编号与解锁说明" />
-            <LayerCard.Primary className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {catalogs.careers.map((career) => <LayerCard key={String(career.careerType)}><LayerCard.Primary className="p-3"><Text bold>{career.name || '未知职业'}</Text><Text size="xs" variant="secondary">职业编号 {career.careerType}</Text>{career.message ? <div className="mt-2 text-kumo-warning"><Text size="xs">解锁说明：{career.message}</Text></div> : null}</LayerCard.Primary></LayerCard>)}
+            <LayerCard.Primary className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {catalogs.careers.map((career) => <Surface key={String(career.careerType)} className="rounded-lg p-3"><Text bold>{career.name || '未知职业'}</Text><Text size="xs" variant="secondary">职业编号 {career.careerType}</Text>{career.message ? <div className="mt-2 text-kumo-warning"><Text size="xs">解锁说明：{career.message}</Text></div> : null}</Surface>)}
             </LayerCard.Primary>
           </LayerCard> : null}
 
-          <LayerCard className="lg:col-span-2">
+          <LayerCard className="col-span-full">
             <SectionHeader title="托管设置" description="配置保存在 Miku 独立组件中" badge={<Button id="save" variant="primary" icon={<FloppyDisk />}>{dirty ? '保存设置（未保存）' : '保存设置'}</Button>} />
             <LayerCard.Primary>
-              <form id="settings" className="grid grid-cols-1 gap-4 lg:grid-cols-2" onSubmit={(event) => event.preventDefault()}>
+              <form id="settings" className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={(event) => event.preventDefault()}>
                 <SettingSection title="培训策略">
                   {select('schoolSelectionMode', '属性策略', [['lowest', '动态补最低属性'], ['rotation', '轮换三项属性'], ['fixed', '固定属性']])}
                   <div className="flex items-end"><Badge variant="purple">当前学习属性：{attributeNames[activeAttribute] || '--'}（{modeLabel}）</Badge></div>
@@ -477,7 +480,7 @@ function App() {
             </LayerCard.Primary>
           </LayerCard>
 
-          <LayerCard className="lg:col-span-2">
+          <LayerCard className="col-span-full">
             <SectionHeader title="运行日志" />
             <LayerCard.Primary><pre className="m-0 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-kumo-inverse p-4 font-mono text-xs text-kumo-inverse">{compactLogs(state.logs || []).join('\n') || '尚无日志'}</pre></LayerCard.Primary>
           </LayerCard>
