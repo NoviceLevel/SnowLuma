@@ -1,4 +1,4 @@
-# QQ 宠物助手 1.2.0
+# QQ 宠物助手 1.3.0
 
 这是同时支持 NapCat OneBot 和 SnowLuma OneBot 的独立 QQ 宠物助手。程序不安装
 NapCat 插件，也不包含 NapCat、SnowLuma 或 QQ。

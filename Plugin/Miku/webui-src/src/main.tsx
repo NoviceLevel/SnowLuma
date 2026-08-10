@@ -146,10 +146,10 @@ function CatalogPreview({ item, fallback }: { item?: CatalogOption; fallback: st
 
 function SettingSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <LayerCard className="h-full">
+    <LayerCard className="flex h-full flex-col">
       <LayerCard.Secondary><Text as="h3" variant="heading3">{title}</Text></LayerCard.Secondary>
-      <LayerCard.Primary>
-        <Grid variant="2up" gap="sm">
+      <LayerCard.Primary className="flex-1">
+        <Grid variant="2up" gap="sm" className="content-start">
           {Children.toArray(children).map((child, index) => {
             const element = isValidElement<{ 'data-miku-wide'?: boolean }>(child) ? child : null;
             const wide = Boolean(element?.props['data-miku-wide']);
@@ -451,9 +451,9 @@ function App() {
 
           <Grid variant="1-2" gap="sm">
             <GridItem>
-              <LayerCard className="h-full">
+              <LayerCard className="flex h-full flex-col">
                 <SectionHeader title="今日进度" />
-                <LayerCard.Primary>
+                <LayerCard.Primary className="flex-1">
                   <div className="flex flex-wrap gap-2">
                     {([['school', '学习'], ['work', '打工'], ['adventure', '冒险'], ['feed', '喂食'], ['wash', '洗澡'], ['visitFriend', '好友走访'], ['visitStranger', '陌生人走访'], ['careOther', '照顾别人']] as const).map(([key, label]) => <Badge key={key} variant="neutral">{label} {progress.counts?.[key] || 0}</Badge>)}
                     <Badge variant="purple">今日经验 {progress.dailyExperienceGain || 0}</Badge>
@@ -463,7 +463,7 @@ function App() {
             </GridItem>
             {(pending || telemetrySummary.length) ? <GridItem>
               <LayerCard className="h-full">
-                <SectionHeader title="成长遥测" description="相同任务与收益已合并；次数为全部结算记录的汇总" badge={<Badge variant="purple">{pending ? `${telemetry.length} 次结算 · 当前任务进行中` : `${telemetry.length} 次结算 · 属性增量 ${formatNumber(totalGain, 1)}`}</Badge>} />
+                <SectionHeader title="成长遥测" badge={<Badge variant="purple">{pending ? `${telemetry.length} 次结算 · 当前任务进行中` : `${telemetry.length} 次结算 · 属性增量 ${formatNumber(totalGain, 1)}`}</Badge>} />
                 <LayerCard.Primary>
                   <div className="flex flex-wrap gap-2">
                     {pending ? <Badge variant="blue">
@@ -545,7 +545,7 @@ function App() {
                   {input('petId', 'Pet ID', 'text', { placeholder: 'AUTO 表示自动获取' })}
                   {input('intervalSeconds', '页面与后端刷新秒数', 'number', { min: 3, max: 300, description: '页面轮询与后端检查使用同一周期' })}
                   {input('coinThreshold', '学习金币阈值', 'number', { min: 0 })}
-                  {select('taskPriority', '任务优先顺序', [['school', '优先学习'], ['work', '优先打工']], { description: '金币不足时自动改为打工' })}
+                  {select('taskPriority', '任务优先顺序', [['school', '优先学习'], ['work', '优先打工'], ['smart', '智能择优']], { description: '智能择优自动对比学习/打工收益选最优' })}
                   {select('fatigue8HourAction', '超过 8 小时后', [['rest', '休息'], ['work', '打工'], ['school', '学习'], ['adventure', '冒险']])}
                   {select('fatigue12HourAction', '超过 12 小时后', [['rest', '休息'], ['work', '打工'], ['school', '学习'], ['adventure', '冒险']])}
                   {input('verifyDelaySeconds', '写后验证等待秒数', 'number', { min: 0, max: 30, description: '喂食/洗澡/结算后复查属性前的等待' })}

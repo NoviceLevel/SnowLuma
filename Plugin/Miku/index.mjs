@@ -96,7 +96,7 @@ function normalizeConfig(input) {
   if (!["lowest", "rotation", "fixed"].includes(config.schoolSelectionMode)) {
     config.schoolSelectionMode = "lowest";
   }
-  if (!["school", "work"].includes(config.taskPriority)) {
+  if (!["school", "work", "smart"].includes(config.taskPriority)) {
     config.taskPriority = "school";
   }
   if (!["rest", "work", "school", "adventure"].includes(config.fatigue8HourAction)) {
@@ -158,7 +158,8 @@ function createDailyProgress() {
     visitedTargetIds: [],
     attributeBaseline: null,
     dailyExperienceGain: 0,
-    telemetry: []
+    telemetry: [],
+    recentFailures: []
   };
 }
 function writeJsonAtomically(filePath, value) {
@@ -229,7 +230,8 @@ class ProgressStore {
           charm: Math.max(0, Number(rest.attributeBaseline.charm) || 0)
         } : null,
         dailyExperienceGain: Math.max(0, Math.trunc(Number(rest.dailyExperienceGain) || 0)),
-        telemetry: Array.isArray(rest.telemetry) ? rest.telemetry.slice(-100) : []
+        telemetry: Array.isArray(rest.telemetry) ? rest.telemetry.slice(-100) : [],
+        recentFailures: Array.isArray(rest.recentFailures) ? rest.recentFailures.slice(-50) : []
       };
     } catch (error) {
       backupCorruptFile(filePath, error);
@@ -264,7 +266,8 @@ class ProgressStore {
         careBlocks: {},
         visitedTargetIds: [],
         attributeBaseline: null,
-        dailyExperienceGain: 0
+        dailyExperienceGain: 0,
+        recentFailures: []
       };
       this.save();
       return true;
@@ -425,6 +428,17 @@ class ProgressStore {
     this.state.telemetry = this.state.telemetry.slice(-100);
     this.save();
   }
+  recordFailure(kind) {
+    this.rollover();
+    this.state.recentFailures.push({ kind: kind, at: new Date().toISOString() });
+    this.state.recentFailures = this.state.recentFailures.slice(-50);
+    this.save();
+  }
+  isTaskDiscouraged(kind, windowMs = 600000, threshold = 2) {
+    const recent = this.snapshot().recentFailures;
+    const cutoff = Date.now() - windowMs;
+    return recent.filter(entry => entry.kind === kind && Date.parse(entry.at) >= cutoff).length >= threshold;
+  }
 }
 function concatBytes(...chunks) {
   const totalLength = chunks.reduce((total, chunk) => total + chunk.length, 0);
@@ -578,6 +592,17 @@ class QQPetError extends Error {
     super(message);
     this.code = code;
   }
+}
+class TaskFallbackError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "TaskFallbackError";
+  }
+}
+function isFallbackWorthy(error) {
+  if (error instanceof TaskFallbackError) return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /不可用|不存在|尚未|不满足|未达到|条件不|not found|not available|requirement|未达到.*要求/i.test(message);
 }
 function isCareerRequirementError(error) {
   const message = error instanceof Error ? error.message : String(error);
@@ -1395,6 +1420,49 @@ function isIrrecoverableSettleError(error) {
 function compareEmployableFriends(left, right) {
   return right.bonus - left.bonus || right.totalReward - left.totalReward || right.target.level - left.target.level || left.target.uin.localeCompare(right.target.uin);
 }
+function buildCandidateList(config, values, counts, recentFailures) {
+  const candidates = [];
+  if (isAdventureWindowOpen(config) && (!config.adventureTimesPerDay || (counts.adventure ?? 0) < config.adventureTimesPerDay)) {
+    candidates.push("adventure");
+  }
+  const schoolWork = config.taskPriority === "smart"
+    ? ["school", "work"]
+    : (config.taskPriority === "work" ? ["work", "school"] : ["school", "work"]);
+  for (const kind of schoolWork) {
+    if (kind === "school" && config.schoolEnabled) {
+      candidates.push("school");
+    } else if (kind === "work" && config.workEnabled && (!config.workTimesPerDay || (counts.work ?? 0) < config.workTimesPerDay)) {
+      candidates.push("work");
+    }
+  }
+  return candidates.sort((left, right) => {
+    const leftDiscouraged = recentFailures.some(entry => entry.kind === left && Date.now() - Date.parse(entry.at) < 600000);
+    const rightDiscouraged = recentFailures.some(entry => entry.kind === right && Date.now() - Date.parse(entry.at) < 600000);
+    if (leftDiscouraged !== rightDiscouraged) return leftDiscouraged ? 1 : -1;
+    return 0;
+  });
+}
+async function estimateBestTaskRps(api, config) {
+  let bestSchoolRps = 0;
+  let bestWorkRps = 0;
+  try {
+    const courses = (await api.querySchoolCourses()).filter(course => course.canDo && course.subEventType > 0);
+    const bestCourse = courses.sort(compareRewardPerSecond)[0];
+    if (bestCourse) bestSchoolRps = parseRewardAmount(bestCourse.reward) / Math.max(1, parseDurationSeconds(bestCourse.duration));
+  } catch {}
+  try {
+    const overview = await api.queryWorkOverview();
+    const availableCareer = overview.careers.find(career => career.available);
+    if (availableCareer) {
+      const jobs = (await api.queryWorkJobs(availableCareer.careerType)).filter(job => job.canDo && job.subEventType > 0);
+      const bestJob = jobs.sort(compareRewardPerSecond)[0];
+      if (bestJob) bestWorkRps = parseRewardAmount(bestJob.reward) / Math.max(1, parseDurationSeconds(bestJob.duration));
+    }
+  } catch {}
+  if (bestSchoolRps > 0 && bestSchoolRps >= bestWorkRps) return "school";
+  if (bestWorkRps > 0) return "work";
+  return config.taskPriority === "work" ? "work" : "school";
+}
 function isAdventureWindowOpen(config, now = new Date()) {
   if (!config.adventureEnabled) {
     return false;
@@ -1402,7 +1470,13 @@ function isAdventureWindowOpen(config, now = new Date()) {
   const hhmm = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
   return isWithinTimeWindow(hhmm, config.adventureStartTime, config.adventureEndTime);
 }
-function decideNextTask(config, values, counts, now = new Date()) {
+function hasFreeAvailableCourses(courses) {
+  return Array.isArray(courses) && courses.some(course => {
+    const costText = String(course.cost ?? "").trim();
+    return !costText || costText === "0" || /免费|free/i.test(costText);
+  });
+}
+function decideNextTask(config, values, counts, now = new Date(), recentFailures = []) {
   if (isAdventureWindowOpen(config, now) && (!config.adventureTimesPerDay || (counts.adventure ?? 0) < config.adventureTimesPerDay)) {
     return "adventure";
   }
@@ -1418,6 +1492,8 @@ class AutomationController {
   active = false;
   generation = 0;
   failureStreak = 0;
+  lastNextCheckHint = null;
+  idleCycles = 0;
   petName = "";
   identityLoaded = false;
   medals = null;
@@ -1494,6 +1570,17 @@ class AutomationController {
     }
     if (!this.active || generation !== this.generation) {
       return;
+    }
+    const baseInterval = Math.max(3, this.host.getConfig().intervalSeconds) * 1000;
+    if (this.lastNextCheckHint === "story_neardone" && this.host.status.story?.remainingSeconds > 0) {
+      nextDelay = Math.min(nextDelay ?? baseInterval, (this.host.status.story.remainingSeconds + 2) * 1000);
+    } else if (this.lastNextCheckHint === "idle") {
+      this.idleCycles = (this.idleCycles ?? 0) + 1;
+      if (this.idleCycles >= 3) {
+        nextDelay = Math.min(300000, baseInterval * 2);
+      }
+    } else {
+      this.idleCycles = 0;
     }
     this.timer = setTimeout(() => {
       this.timer = null;
@@ -1586,7 +1673,8 @@ class AutomationController {
     });
   }
   decide(config, values) {
-    return decideNextTask(config, values, this.progress.snapshot().counts);
+    const snapshot = this.progress.snapshot();
+    return buildCandidateList(config, values, snapshot.counts, snapshot.recentFailures);
   }
   actionArray(payload) {
     if (Array.isArray(payload)) {
@@ -1991,6 +2079,43 @@ class AutomationController {
       this.busy = false;
     }
   }
+  async startTaskByKind(api, config, values, kind) {
+    if (kind === "school") {
+      const progress = this.progress.snapshot();
+      const attribute = selectSchoolAttribute(config, values, progress.schoolRotationIndex);
+      const courseSubEvent = config.schoolSelectionMode === "fixed" ? config.courseSubEvent : 0;
+      const schoolStory = await api.startSchool(attribute, courseSubEvent);
+      this.progress.setPending("school", schoolStory.storyId, {
+        startedAt: new Date().toISOString(),
+        attribute: attribute,
+        item: compactTask(schoolStory.item),
+        beforeValues: attributeSnapshot(values)
+      });
+      const attributeLabel = { physical: "力量", culture: "智力", art: "魅力" }[attribute];
+      this.host.log("已开始" + attributeLabel + "学习“" + schoolStory.item.name + "”" + (schoolStory.storyId ? "，storyId=" + schoolStory.storyId : ""));
+    } else if (kind === "work") {
+      const hireCandidate = config.employFriend ? await this.findEmployableFriend(api, config) : null;
+      const workStory = await api.startWork(config.workCareerType, hireCandidate?.jobSubEvent ?? config.workJobSubEvent, hireCandidate ? {
+        uin: hireCandidate.target.uin,
+        petId: hireCandidate.target.petId
+      } : undefined);
+      this.progress.setPending("work", workStory.storyId, {
+        startedAt: new Date().toISOString(),
+        item: compactTask(workStory.item),
+        beforeValues: attributeSnapshot(values)
+      });
+      const hireNote = workStory.hiredFriend && hireCandidate ? "，已雇佣好友" + this.targetLabel(hireCandidate.target) + "（加成 " + (hireCandidate.bonus >= 0 ? "+" : "") + hireCandidate.bonus + "）" : "";
+      this.host.log("已开始打工“" + workStory.item.name + "”" + hireNote + (workStory.storyId ? "，storyId=" + workStory.storyId : ""));
+    } else {
+      const adventureStory = await api.startAdventure(config.adventureOption);
+      this.progress.setPending("adventure", adventureStory.storyId, {
+        startedAt: new Date().toISOString(),
+        item: compactTask(adventureStory.item),
+        beforeValues: attributeSnapshot(values)
+      });
+      this.host.log("已开始冒险“" + adventureStory.item.name + "”" + (adventureStory.storyId ? "，storyId=" + adventureStory.storyId : ""));
+    }
+  }
   async runOnce() {
     if (this.busy) {
       return null;
@@ -2013,6 +2138,9 @@ class AutomationController {
       this.progress.recordAttributes(values);
       this.publish(profile, fatigue, values, story, foodInventory, bathInventory);
       this.host.log("状态：金币 " + values.gold.toFixed(0) + "，心情 " + values.feel.toFixed(0) + "，体力 " + values.hunger.toFixed(0) + "，清洁 " + values.clean.toFixed(0));
+      if (story.storyId && !story.finished && story.remainingSeconds > 0 && story.remainingSeconds <= 30) {
+        this.lastNextCheckHint = "story_neardone";
+      }
       if (story.finished && (await this.handleStory(api, config, story))) {
         return "story";
       }
@@ -2090,58 +2218,68 @@ class AutomationController {
           activity: "疲劳休息：已进入 " + fatigueTierLabel + "档"
         };
         this.host.updateStatus(statusPatch);
+        this.lastNextCheckHint = "idle";
         return "fatigue_rest";
       }
-      const nextTask = forcedAction ?? this.decide(config, values);
-      if (!nextTask) {
-        this.host.updateStatus({
-          activity: "空闲：今日任务已完成"
-        });
+      if (forcedAction) {
+        const candidates = [forcedAction];
+        if (await this.blocked(config, forcedAction === "school" ? "学习" : forcedAction === "work" ? "打工" : "冒险")) {
+          return forcedAction;
+        }
+        await this.startTaskByKind(api, config, values, forcedAction);
+        return forcedAction;
+      }
+      const snapshot = this.progress.snapshot();
+      const candidates = buildCandidateList(config, values, snapshot.counts, snapshot.recentFailures);
+      if (!candidates.length) {
+        this.host.updateStatus({ activity: "空闲：今日任务已完成" });
+        this.lastNextCheckHint = "idle";
         return null;
       }
-      if (await this.blocked(config, nextTask === "school" ? "学习" : nextTask === "work" ? "打工" : "冒险")) {
-        return nextTask;
+      let freeCoursesAvailable = false;
+      if (values.gold < config.coinThreshold && candidates.includes("school")) {
+        try {
+          const freeCourses = (await api.querySchoolCourses()).filter(course => course.canDo && course.subEventType > 0);
+          freeCoursesAvailable = hasFreeAvailableCourses(freeCourses);
+        } catch {}
       }
-      if (nextTask === "school") {
-        const progress = this.progress.snapshot();
-        const attribute = selectSchoolAttribute(config, values, progress.schoolRotationIndex);
-        const courseSubEvent = config.schoolSelectionMode === "fixed" ? config.courseSubEvent : 0;
-        const schoolStory = await api.startSchool(attribute, courseSubEvent);
-        this.progress.setPending("school", schoolStory.storyId, {
-          startedAt: new Date().toISOString(),
-          attribute: attribute,
-          item: compactTask(schoolStory.item),
-          beforeValues: attributeSnapshot(values)
-        });
-        const attributeLabel = {
-          physical: "力量",
-          culture: "智力",
-          art: "魅力"
-        }[attribute];
-        this.host.log("已开始" + attributeLabel + "学习“" + schoolStory.item.name + "”" + (schoolStory.storyId ? "，storyId=" + schoolStory.storyId : ""));
-      } else if (nextTask === "work") {
-        const hireCandidate = config.employFriend ? await this.findEmployableFriend(api, config) : null;
-        const workStory = await api.startWork(config.workCareerType, hireCandidate?.jobSubEvent ?? config.workJobSubEvent, hireCandidate ? {
-          uin: hireCandidate.target.uin,
-          petId: hireCandidate.target.petId
-        } : undefined);
-        this.progress.setPending("work", workStory.storyId, {
-          startedAt: new Date().toISOString(),
-          item: compactTask(workStory.item),
-          beforeValues: attributeSnapshot(values)
-        });
-        const hireNote = workStory.hiredFriend && hireCandidate ? "，已雇佣好友" + this.targetLabel(hireCandidate.target) + "（加成 " + (hireCandidate.bonus >= 0 ? "+" : "") + hireCandidate.bonus + "）" : "";
-        this.host.log("已开始打工“" + workStory.item.name + "”" + hireNote + (workStory.storyId ? "，storyId=" + workStory.storyId : ""));
-      } else {
-        const adventureStory = await api.startAdventure(config.adventureOption);
-        this.progress.setPending("adventure", adventureStory.storyId, {
-          startedAt: new Date().toISOString(),
-          item: compactTask(adventureStory.item),
-          beforeValues: attributeSnapshot(values)
-        });
-        this.host.log("已开始冒险“" + adventureStory.item.name + "”" + (adventureStory.storyId ? "，storyId=" + adventureStory.storyId : ""));
+      const effectiveCandidates = candidates.filter(kind => {
+        if (kind === "school" && values.gold < config.coinThreshold && !freeCoursesAvailable) return false;
+        return true;
+      });
+      if (!effectiveCandidates.length) {
+        this.host.updateStatus({ activity: "空闲：金币不足且无免费课程" });
+        this.lastNextCheckHint = "idle";
+        return null;
       }
-      return nextTask;
+      const maxAttempts = Math.min(2, effectiveCandidates.length);
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        let candidate = effectiveCandidates[attempt];
+        if (config.taskPriority === "smart" && (candidate === "school" || candidate === "work")) {
+          try {
+            candidate = await estimateBestTaskRps(api, config);
+          } catch {}
+        }
+        const actionLabel = candidate === "school" ? "学习" : candidate === "work" ? "打工" : "冒险";
+        if (await this.blocked(config, actionLabel)) {
+          return candidate;
+        }
+        try {
+          await this.startTaskByKind(api, config, values, candidate);
+          return candidate;
+        } catch (error) {
+          if (!isFallbackWorthy(error)) {
+            throw error;
+          }
+          this.progress.recordFailure(candidate);
+          const message = error instanceof Error ? error.message : String(error);
+          this.host.log("任务" + actionLabel + "启动失败，尝试降级：" + message);
+          if (attempt >= maxAttempts - 1) {
+            throw error;
+          }
+        }
+      }
+      return null;
     } finally {
       this.host.updateStatus({
         progress: this.progress.snapshot()
@@ -2926,4 +3064,4 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exitCode = 1;
   });
 }
-export { AutomationController, DEFAULT_CONFIG, ProgressStore, QQPetPlugin, compareEmployableFriends, compareRewardPerSecond, createApiToken, createWebServer, decideNextTask, fatigueAction, isAdventureWindowOpen, isIrrecoverableSettleError, isWithinTimeWindow, normalizeConfig, parseDurationSeconds, parseFatigueStatus, parseRewardAmount, resolveStaticAssetPath, rotateSchoolAttribute, selectSchoolAttribute, selectSchoolOrWork, writeJsonAtomically };
+export { AutomationController, DEFAULT_CONFIG, ProgressStore, QQPetPlugin, TaskFallbackError, buildCandidateList, compareEmployableFriends, compareRewardPerSecond, createApiToken, createWebServer, decideNextTask, estimateBestTaskRps, fatigueAction, hasFreeAvailableCourses, isAdventureWindowOpen, isFallbackWorthy, isIrrecoverableSettleError, isWithinTimeWindow, normalizeConfig, parseDurationSeconds, parseFatigueStatus, parseRewardAmount, resolveStaticAssetPath, rotateSchoolAttribute, selectSchoolAttribute, selectSchoolOrWork, writeJsonAtomically };

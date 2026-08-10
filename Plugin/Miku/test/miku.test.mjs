@@ -8,11 +8,15 @@ import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_CONFIG,
   ProgressStore,
+  TaskFallbackError,
+  buildCandidateList,
   compareRewardPerSecond,
   createWebServer,
   decideNextTask,
   fatigueAction,
+  hasFreeAvailableCourses,
   isAdventureWindowOpen,
+  isFallbackWorthy,
   isIrrecoverableSettleError,
   isWithinTimeWindow,
   normalizeConfig,
@@ -162,9 +166,9 @@ describe('Miku decision helpers', () => {
     const afternoon = new Date('2026-08-10T15:00:00');
     assert.equal(isAdventureWindowOpen(config, evening), true);
     assert.equal(isAdventureWindowOpen(config, afternoon), false);
-    assert.equal(decideNextTask(config, { gold: 100 }, { adventure: 0, work: 0 }, evening), 'adventure');
-    assert.equal(decideNextTask(config, { gold: 100 }, { adventure: 3, work: 0 }, evening), 'school');
-    assert.equal(decideNextTask(config, { gold: 100 }, { adventure: 0, work: 0 }, afternoon), 'school');
+    assert.equal(decideNextTask(config, { gold: 100 }, { adventure: 0, work: 0 }, evening, []), 'adventure');
+    assert.equal(decideNextTask(config, { gold: 100 }, { adventure: 3, work: 0 }, evening, []), 'school');
+    assert.equal(decideNextTask(config, { gold: 100 }, { adventure: 0, work: 0 }, afternoon, []), 'school');
   });
 
   test('recognizes irrecoverable settle errors', () => {
@@ -172,6 +176,97 @@ describe('Miku decision helpers', () => {
     assert.equal(isIrrecoverableSettleError(new Error('宠物结算条件不满足')), true);
     assert.equal(isIrrecoverableSettleError(new Error('settle already completed')), true);
     assert.equal(isIrrecoverableSettleError(new Error('网络超时')), false);
+  });
+
+  test('detects free available courses from cost text', () => {
+    assert.equal(hasFreeAvailableCourses([{ cost: '' }, { cost: '100 金币' }]), true);
+    assert.equal(hasFreeAvailableCourses([{ cost: '0' }]), true);
+    assert.equal(hasFreeAvailableCourses([{ cost: '免费' }]), true);
+    assert.equal(hasFreeAvailableCourses([{ cost: 'free' }]), true);
+    assert.equal(hasFreeAvailableCourses([{ cost: '100 金币' }, { cost: '50 金币' }]), false);
+    assert.equal(hasFreeAvailableCourses(null), false);
+    assert.equal(hasFreeAvailableCourses([]), false);
+  });
+
+  test('builds candidate list with smart priority and failure avoidance', () => {
+    const base = {
+      ...DEFAULT_CONFIG,
+      schoolEnabled: true,
+      workEnabled: true,
+      adventureEnabled: true,
+      adventureStartTime: '20:00',
+      adventureEndTime: '22:00',
+      adventureTimesPerDay: 3,
+      workTimesPerDay: 0,
+      taskPriority: 'smart',
+    };
+    const evening = new Date('2026-08-10T21:00:00');
+    const candidates = buildCandidateList(base, { gold: 100 }, { adventure: 0, work: 0 }, []);
+    assert.ok(candidates.includes('adventure'));
+    assert.ok(candidates.includes('school'));
+    assert.ok(candidates.includes('work'));
+    assert.equal(candidates[0], 'adventure');
+
+    const recentFailures = [{ kind: 'school', at: new Date(Date.now() - 60000).toISOString() }];
+    const discouraged = buildCandidateList(base, { gold: 100 }, { adventure: 0, work: 0 }, recentFailures);
+    const schoolIdx = discouraged.indexOf('school');
+    const workIdx = discouraged.indexOf('work');
+    assert.ok(schoolIdx > workIdx, 'school should be sorted after work when discouraged');
+  });
+
+  test('records and checks recent failures with rollover', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'miku-failures-'));
+    const filePath = path.join(directory, 'daily-progress.json');
+    const store = new ProgressStore(filePath);
+    store.recordFailure('school');
+    store.recordFailure('school');
+    assert.equal(store.isTaskDiscouraged('school'), true);
+    assert.equal(store.isTaskDiscouraged('work'), false);
+    assert.equal(store.snapshot().recentFailures.length, 2);
+  });
+
+  test('clears recentFailures on daily rollover', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'miku-rollover-'));
+    const filePath = path.join(directory, 'daily-progress.json');
+    const store = new ProgressStore(filePath);
+    store.recordFailure('adventure');
+    store.recordFailure('school');
+    assert.equal(store.snapshot().recentFailures.length, 2);
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowKey = tomorrow.getFullYear() + '-' + String(tomorrow.getMonth() + 1).padStart(2, '0') + '-' + String(tomorrow.getDate()).padStart(2, '0');
+    store.rollover(tomorrowKey);
+    assert.equal(store.snapshot().recentFailures.length, 0);
+  });
+
+  test('fallback chain tries at most 2 candidates', () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      schoolEnabled: true,
+      workEnabled: true,
+      adventureEnabled: true,
+      adventureStartTime: '20:00',
+      adventureEndTime: '22:00',
+      adventureTimesPerDay: 3,
+      workTimesPerDay: 0,
+      taskPriority: 'smart',
+    };
+    const evening = new Date('2026-08-10T21:00:00');
+    const candidates = buildCandidateList(config, { gold: 100 }, { adventure: 0, work: 0 }, []);
+    assert.ok(candidates.length >= 2, 'should have multiple candidates');
+    const maxAttempts = Math.min(2, candidates.length);
+    assert.equal(maxAttempts, 2, 'fallback chain should try at most 2');
+  });
+
+  test('TaskFallbackError marks degradable failures and isFallbackWorthy detects game-state errors', () => {
+    const fallbackError = new TaskFallbackError('课程当前不可用');
+    assert.equal(fallbackError.name, 'TaskFallbackError');
+    assert.equal(isFallbackWorthy(fallbackError), true);
+    assert.equal(isFallbackWorthy(new Error('课程当前不可用')), true);
+    assert.equal(isFallbackWorthy(new Error('职业尚未开放')), true);
+    assert.equal(isFallbackWorthy(new Error('settle already completed')), false);
+    assert.equal(isFallbackWorthy(new Error('网络超时')), false);
+    assert.equal(isFallbackWorthy(new Error('OneBot send_packet 失败')), false);
   });
 });
 
