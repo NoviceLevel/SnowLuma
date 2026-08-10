@@ -225,11 +225,9 @@ function renderAttributeTelemetry(progress={}){
     const element=$(`${key}-telemetry`);
     if(!element)continue;
     const attribute={strength:'physical',intelligence:'culture',charm:'art'}[key];
-    element.classList.remove('is-pending','is-gain','is-empty');
-    if(!hasExpectedItem){element.textContent='等待目录同步';element.classList.add('is-empty');continue}
+    if(!hasExpectedItem){element.textContent='等待目录同步';continue}
     const gain=attribute===targetAttribute?expectedGain??0:0;
     element.textContent=`下次获取 ${gain>=0?'+':''}${num(gain)}`;
-    element.classList.add(attribute===targetAttribute?'is-gain':'is-empty');
   }
 }
 function renderTelemetry(progress={}){
@@ -335,7 +333,6 @@ function render(state){
   text('experience-rate',profile.experienceRate?`成长倍率 ×${num(profile.experienceRate,1)}`:'');
   const fatigue=state.fatigue;
   text('fatigue',fatigue?.fatigued===true?`是（${fatigue.tier} 小时档）`:fatigue?.fatigued===false?'否':'未知');
-  $('fatigue').className=fatigue?.fatigued===true?'state-bad':fatigue?.fatigued===false?'state-good':'state-unknown';
   const story=state.story||{},type=storyType(story);text('story-status',story.storyId?(story.finished?`${type}（待结算）`:type):'空闲');text('story-id',story.storyId||'无');syncStoryCountdown(story);
   const inv=state.inventory||{};text('biscuits',inv.biscuits);text('shrimp',inv.shrimp);text('soap',inv.soap);text('bath-ball',inv.bathBall);
   const counts=state.progress?.counts||{};for(const key of ['school','work','adventure','feed','wash','visitFriend','visitStranger','careOther'])text(`count-${key}`,counts[key]||0);
