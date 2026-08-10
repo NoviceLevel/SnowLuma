@@ -1,6 +1,10 @@
 import { createLogger, type Logger } from '@snowluma/common/logger';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { Worker } from 'worker_threads';
 import type { HookProcessBaseInfo } from './injector';
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Isolated, timeout-bounded wrapper around the native `getAllMainProcess()`
@@ -93,10 +97,71 @@ function mapPids(pids: number[], processName: string): HookProcessBaseInfo[] {
     .map((pid) => ({ pid, name: processName, path: '' }));
 }
 
+/** QQ.exe also hosts extension processes such as QQEXGuild. They have the
+ * same image name but are not valid injection targets. Keep this predicate
+ * narrow so a command-line lookup failure never hides a real QQ process. */
+export function isWindowsQqExtensionCommandLine(commandLine: string): boolean {
+  return /(?:^|\s)--loadapp=exApp(?:\s|$)/i.test(commandLine)
+    || /(?:^|\s)--exApp=[^\s]+/i.test(commandLine);
+}
+
+interface AnyProcessCommandLine {
+  ProcessId?: number | string;
+  CommandLine?: string | null;
+}
+
+function createWindowsExtensionFilter(log: Logger): (processes: HookProcessBaseInfo[]) => Promise<HookProcessBaseInfo[]> {
+  const classifications = new Map<number, boolean>();
+
+  return async (processes) => {
+    if (process.platform !== 'win32' || processes.length === 0) {
+      if (processes.length === 0) classifications.clear();
+      return processes;
+    }
+
+    const livePids = new Set(processes.map(({ pid }) => pid));
+    for (const pid of classifications.keys()) {
+      if (!livePids.has(pid)) classifications.delete(pid);
+    }
+    const unknownPids = processes.map(({ pid }) => pid).filter((pid) => !classifications.has(pid));
+    let newlyFiltered = 0;
+
+    if (unknownPids.length > 0) {
+      const ids = unknownPids.join(',');
+      const command = [
+        "$ErrorActionPreference='Stop'",
+        `$ids=@(${ids})`,
+        'Get-CimInstance Win32_Process -Filter "Name=\'QQ.exe\'" | Where-Object { $ids -contains [int]$_.ProcessId } | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress',
+      ].join('; ');
+
+      try {
+        const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { timeout: 1500, windowsHide: true });
+        const raw = JSON.parse(stdout.trim() || '[]') as AnyProcessCommandLine | AnyProcessCommandLine[];
+        const rows = Array.isArray(raw) ? raw : [raw];
+        const commandLines = new Map(rows.filter((row) => Number.isInteger(Number(row?.ProcessId))).map((row) => [Number(row.ProcessId), String(row.CommandLine || '')]));
+        for (const pid of unknownPids) {
+          const commandLine = commandLines.get(pid);
+          if (commandLine !== undefined) {
+            const isExtension = isWindowsQqExtensionCommandLine(commandLine);
+            classifications.set(pid, isExtension);
+            if (isExtension) newlyFiltered += 1;
+          }
+        }
+      } catch {
+        // Preserve unknown processes. A later enumeration retries classification.
+      }
+    }
+
+    if (newlyFiltered > 0) log.debug('filtered %d new QQ extension process(es) from injection targets', newlyFiltered);
+    return processes.filter(({ pid }) => classifications.get(pid) !== true);
+  };
+}
+
 export function createNativeProcessEnumerator(deps: NativeEnumeratorDeps): ProcessEnumerator {
   const log = deps.log ?? createLogger('ProcessEnumerator');
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxOrphans = deps.maxOrphans ?? DEFAULT_MAX_ORPHANS;
+  const filterExtensions = createWindowsExtensionFilter(log);
 
   // No addon to isolate (macOS / missing) → never spawn a worker; the sync
   // fallback there is a cheap socket read, not a /proc walk.
@@ -104,7 +169,7 @@ export function createNativeProcessEnumerator(deps: NativeEnumeratorDeps): Proce
     return {
       async enumerate() {
         try {
-          return deps.fallbackSync();
+          return filterExtensions(deps.fallbackSync());
         } catch (err) {
           log.warn('enumerate fallback failed: %s', errMsg(err));
           return null;
@@ -164,9 +229,9 @@ export function createNativeProcessEnumerator(deps: NativeEnumeratorDeps): Proce
     void w.terminate().catch(() => { /* already gone */ });
   };
 
-  const syncFallback = (): HookProcessBaseInfo[] | null => {
+  const syncFallback = async (): Promise<HookProcessBaseInfo[] | null> => {
     try {
-      return deps.fallbackSync();
+      return filterExtensions(deps.fallbackSync());
     } catch (err) {
       log.warn('enumerate sync fallback failed: %s', errMsg(err));
       return null;
@@ -219,7 +284,7 @@ export function createNativeProcessEnumerator(deps: NativeEnumeratorDeps): Proce
         // keep prior state rather than nuking every session.
         return null;
       }
-      return mapPids(outcome, deps.processName);
+      return filterExtensions(mapPids(outcome, deps.processName));
     },
 
     dispose() {

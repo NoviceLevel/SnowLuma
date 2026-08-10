@@ -1,8 +1,29 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createNativeProcessEnumerator } from '../src/process-enumerator';
+import {
+  createNativeProcessEnumerator,
+  isWindowsQqExtensionCommandLine,
+} from '../src/process-enumerator';
 import type { HookProcessBaseInfo } from '../src/injector';
 
 const QQ = (pid: number): HookProcessBaseInfo => ({ pid, name: 'qq', path: '' });
+
+describe('isWindowsQqExtensionCommandLine', () => {
+  it('recognizes QQ extension subprocess arguments', () => {
+    expect(isWindowsQqExtensionCommandLine(
+      '"D:\\Program Files\\Tencent\\QQNT\\QQ.exe" --pcqq-platform-channel-handle=7512 --loadapp=exApp --exApp=QQEXGuild',
+    )).toBe(true);
+    expect(isWindowsQqExtensionCommandLine('"QQ.exe" --EXAPP=QQEXGuild')).toBe(true);
+  });
+
+  it('keeps regular QQ main-process arguments', () => {
+    expect(isWindowsQqExtensionCommandLine(
+      '"D:\\Program Files\\Tencent\\QQNT\\QQ.exe" --relaunch',
+    )).toBe(false);
+    expect(isWindowsQqExtensionCommandLine(
+      '"D:\\Program Files\\Tencent\\QQNT\\QQ.exe"',
+    )).toBe(false);
+  });
+});
 
 describe('createNativeProcessEnumerator', () => {
   describe('no addon (macOS / missing) → synchronous fallback, never a worker', () => {
