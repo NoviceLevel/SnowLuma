@@ -1,6 +1,7 @@
 import { Badge } from '@cloudflare/kumo/components/badge';
 import { Button, LinkButton } from '@cloudflare/kumo/components/button';
 import { Dialog, DialogClose, DialogDescription, DialogRoot, DialogTitle, DialogTrigger } from '@cloudflare/kumo/components/dialog';
+import { Grid, GridItem } from '@cloudflare/kumo/components/grid';
 import { Input } from '@cloudflare/kumo/components/input';
 import { LayerCard } from '@cloudflare/kumo/components/layer-card';
 import { Select } from '@cloudflare/kumo/components/select';
@@ -304,6 +305,7 @@ function App() {
                 <Button variant="ghost" size="sm" shape="square" aria-label={accountVisible ? '隐藏完整账号信息' : '显示完整账号信息'} onClick={() => setAccountVisible((value) => !value)}>{accountVisible ? <EyeSlash /> : <Eye />}</Button>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
+                <Badge variant="purple">等级 {profile.level ? `Lv.${profile.level}` : '--'}</Badge>
                 <Badge variant="neutral">生日 {profileDate(profile.birthdayAt)}</Badge>
                 <Badge variant="neutral">性别 {profile.gender || '--'}</Badge>
                 <Badge variant="neutral">物种 {profile.species || '--'}</Badge>
@@ -317,24 +319,37 @@ function App() {
           </LayerCard.Primary>
         </LayerCard>
 
-        <section className="grid grid-cols-2 gap-3 md:grid-cols-2 xl:grid-cols-6" aria-label="宠物状态">
-          <MetricCard label="金币" value={formatNumber(values.gold)} icon={selectedCourse?.rewardIconUrl ? <img src={selectedCourse.rewardIconUrl} alt="" className="size-5 object-contain" /> : undefined} />
-          <MetricCard label="心情" value={formatNumber(values.feel)} />
-          <MetricCard label="体力" value={formatNumber(values.hunger)} />
-          <MetricCard label="清洁" value={formatNumber(values.clean)} />
-          <MetricCard label="综合" value={formatNumber(values.total)} />
-          <MetricCard label="等级" value={profile.level ? `Lv.${profile.level}` : '--'} />
-          {(['strength', 'intelligence', 'charm'] as const).map((key) => {
-            const attribute = ({ strength: 'physical', intelligence: 'culture', charm: 'art' })[key];
-            const gain = attribute === targetAttribute ? expectedGain(expectedItem, targetAttribute) ?? 0 : 0;
-            return <MetricCard key={key} label={({ strength: '力量', intelligence: '智力', charm: '魅力' })[key]} value={formatNumber(values[key])} detail={<Text size="sm" variant={gain > 0 ? 'success' : 'secondary'} bold>下次获取 {gain >= 0 ? '+' : ''}{formatNumber(gain)}</Text>} badge={<Badge variant={({ strength: 'red', intelligence: 'blue', charm: 'orange' } as const)[key]}>{({ strength: '力', intelligence: '智', charm: '魅' })[key]}</Badge>} />;
-          })}
-          <MetricCard label="经验" value={profile.levelExperience ? `${formatNumber(profile.currentExperience)} / ${formatNumber(profile.levelExperience)}` : formatNumber(profile.currentExperience)} detail={profile.experienceRate ? `成长倍率 ×${formatNumber(profile.experienceRate, 1)}` : undefined} />
-          <MetricCard label="疲劳" value={state.fatigue?.fatigued === true ? `是 · ${state.fatigue.tier} 小时档` : state.fatigue?.fatigued === false ? '否' : '未知'} />
+        <section className="flex flex-col gap-3" aria-label="宠物状态">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Text as="h2" variant="heading3">当前状态</Text>
+            <Text size="xs" variant="secondary">同步数值</Text>
+          </div>
+          <Grid variant="6up" gap="sm">
+            <GridItem><MetricCard label="金币" value={formatNumber(values.gold)} icon={selectedCourse?.rewardIconUrl ? <img src={selectedCourse.rewardIconUrl} alt="" className="size-5 object-contain" /> : undefined} /></GridItem>
+            <GridItem><MetricCard label="心情" value={formatNumber(values.feel)} /></GridItem>
+            <GridItem><MetricCard label="体力" value={formatNumber(values.hunger)} /></GridItem>
+            <GridItem><MetricCard label="清洁" value={formatNumber(values.clean)} /></GridItem>
+            <GridItem><MetricCard label="综合" value={formatNumber(values.total)} /></GridItem>
+            <GridItem><MetricCard label="疲劳" value={state.fatigue?.fatigued === true ? '疲劳中' : state.fatigue?.fatigued === false ? '正常' : '未知'} detail={state.fatigue?.fatigued === true ? `${state.fatigue.tier} 小时档` : undefined} /></GridItem>
+          </Grid>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <Text as="h2" variant="heading3">成长训练</Text>
+            <Badge variant="purple">当前学习：{attributeNames[targetAttribute] || '--'}（{modeLabel}）</Badge>
+          </div>
+          <Grid variant="1-2-4up" gap="sm">
+            {(['strength', 'intelligence', 'charm'] as const).map((key) => {
+              const attribute = ({ strength: 'physical', intelligence: 'culture', charm: 'art' })[key];
+              const gain = attribute === targetAttribute ? expectedGain(expectedItem, targetAttribute) ?? 0 : 0;
+              const label = ({ strength: '力量', intelligence: '智力', charm: '魅力' })[key];
+              return <GridItem key={key}><MetricCard label={`${label} · 下次训练`} value={`${gain >= 0 ? '+' : ''}${formatNumber(gain)}`} detail={`当前 ${formatNumber(values[key])}`} badge={<Badge variant={({ strength: 'red', intelligence: 'blue', charm: 'orange' } as const)[key]}>{({ strength: '力', intelligence: '智', charm: '魅' })[key]}</Badge>} /></GridItem>;
+            })}
+            <GridItem><MetricCard label="经验" value={profile.levelExperience ? `${formatNumber(profile.currentExperience)} / ${formatNumber(profile.levelExperience)}` : formatNumber(profile.currentExperience)} detail={profile.experienceRate ? `成长倍率 ×${formatNumber(profile.experienceRate, 1)}` : undefined} /></GridItem>
+          </Grid>
         </section>
 
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <LayerCard className="col-span-full">
+        <section className="flex flex-col gap-4">
+          <LayerCard>
             <SectionHeader title="自动托管" description="按当前设置自动照顾宠物并执行任务" badge={<Badge variant={automationRunning ? 'green' : 'neutral'}>{automationRunning ? '运行中' : '已停止'}</Badge>} />
             <LayerCard.Primary className="flex flex-wrap items-center gap-2">
               <Button id="start" variant={automationRunning ? 'destructive' : 'primary'} icon={automationRunning ? <Power /> : <Play />}>{automationRunning ? '停止' : '启动'}</Button>
@@ -344,29 +359,31 @@ function App() {
             </LayerCard.Primary>
           </LayerCard>
 
-          <LayerCard>
-            <SectionHeader title="当前任务" />
-            <LayerCard.Primary className="flex items-center gap-4">
-              {story.storyId ? (() => {
-                const item = String(story.storyId).startsWith('6100') ? selectedCourse : String(story.storyId).startsWith('6400') ? selectedJob : selectedAdventure;
-                return item?.iconUrl ? <img src={item.iconUrl} alt="任务素材" className="size-20 object-contain" /> : null;
-              })() : null}
-              <div className="min-w-0 flex-1"><DefinitionList items={[
-                ['任务状态', story.storyId ? story.finished ? `${storyType(story)}（待结算）` : storyType(story) : '空闲'],
-                ['Story ID', story.storyId || '无'],
-                ['剩余 / 总时长', story.storyId ? `${duration(storyRemaining)} / ${duration(story.durationSeconds)}` : '--'],
-              ]} /></div>
-            </LayerCard.Primary>
-          </LayerCard>
+          <Grid variant="2up" gap="base">
+            <GridItem><LayerCard>
+              <SectionHeader title="当前任务" />
+              <LayerCard.Primary className="flex items-center gap-4">
+                {story.storyId ? (() => {
+                  const item = String(story.storyId).startsWith('6100') ? selectedCourse : String(story.storyId).startsWith('6400') ? selectedJob : selectedAdventure;
+                  return item?.iconUrl ? <img src={item.iconUrl} alt="任务素材" className="size-20 object-contain" /> : null;
+                })() : null}
+                <div className="min-w-0 flex-1"><DefinitionList items={[
+                  ['任务状态', story.storyId ? story.finished ? `${storyType(story)}（待结算）` : storyType(story) : '空闲'],
+                  ['Story ID', story.storyId || '无'],
+                  ['剩余 / 总时长', story.storyId ? `${duration(storyRemaining)} / ${duration(story.durationSeconds)}` : '--'],
+                ]} /></div>
+              </LayerCard.Primary>
+            </LayerCard></GridItem>
+
+            <GridItem><LayerCard>
+              <SectionHeader title="背包" />
+              <LayerCard.Primary><DefinitionList items={[
+                ['饼干', inventory.biscuits ?? '--'], ['虾仁', inventory.shrimp ?? '--'], ['香皂片', inventory.soap ?? '--'], ['沐浴球', inventory.bathBall ?? '--'],
+              ]} /></LayerCard.Primary>
+            </LayerCard></GridItem>
+          </Grid>
 
           <LayerCard>
-            <SectionHeader title="背包" />
-            <LayerCard.Primary><DefinitionList items={[
-              ['饼干', inventory.biscuits ?? '--'], ['虾仁', inventory.shrimp ?? '--'], ['香皂片', inventory.soap ?? '--'], ['沐浴球', inventory.bathBall ?? '--'],
-            ]} /></LayerCard.Primary>
-          </LayerCard>
-
-          <LayerCard className="col-span-full">
             <SectionHeader title="今日进度" />
             <LayerCard.Primary className="flex flex-wrap gap-2">
               {([['school', '学习'], ['work', '打工'], ['adventure', '冒险'], ['feed', '喂食'], ['wash', '洗澡'], ['visitFriend', '好友走访'], ['visitStranger', '陌生人走访'], ['careOther', '照顾别人']] as const).map(([key, label]) => <Badge key={key} variant="neutral">{label} {progress.counts?.[key] || 0}</Badge>)}
@@ -374,7 +391,7 @@ function App() {
             </LayerCard.Primary>
           </LayerCard>
 
-          {telemetryItems.length ? <LayerCard className="col-span-full">
+          {telemetryItems.length ? <LayerCard>
             <SectionHeader title="成长遥测" description="任务结算前后属性、实际耗时与目录收益" badge={<Badge variant="purple">{pending ? `${telemetry.length} 次结算 · 当前任务进行中` : `${telemetry.length} 次结算 · 属性增量 ${formatNumber(totalGain, 1)}`}</Badge>} />
             <LayerCard.Primary className="grid gap-2">
               {telemetryItems.map((item: AnyRecord, index: number) => {
@@ -389,7 +406,7 @@ function App() {
             </LayerCard.Primary>
           </LayerCard> : null}
 
-          {profile.medals?.length ? <LayerCard className="col-span-full">
+          {profile.medals?.length ? <LayerCard>
             <SectionHeader title="我的徽章" description="全部徽章、获得状态与佩戴状态" badge={<Badge variant="purple">{profile.medals.filter((item: AnyRecord) => item.acquired).length}/{profile.medals.length} 枚</Badge>} />
             <LayerCard.Primary className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {profile.medals.map((item: AnyRecord) => <Surface key={item.id} className={`rounded-lg p-3 ${item.acquired ? '' : 'opacity-50 grayscale'}`} title={[item.requirement, item.description].filter(Boolean).join('\n')}>
@@ -401,21 +418,21 @@ function App() {
             </LayerCard.Primary>
           </LayerCard> : null}
 
-          {state.interactions?.length ? <LayerCard className="col-span-full">
+          {state.interactions?.length ? <LayerCard>
             <SectionHeader title="互动消息" description="服务器返回的最近互动记录" badge={<Badge variant="purple">{state.interactions.length} 条</Badge>} />
             <LayerCard.Primary className="grid max-h-96 gap-2 overflow-auto">
               {state.interactions.map((item: AnyRecord) => <Surface key={item.id} className="rounded-lg p-3"><div className="flex flex-wrap items-center justify-between gap-2"><Text bold>{item.petName || `QQ ${item.uin || '未知'}`}</Text><Text size="xs" variant="secondary">{[({ 1: '喂食', 2: '踩踩', 5: '洗澡', 6: '火花', 6400: '打工', 6700: '冒险' } as AnyRecord)[item.eventType] || '互动', item.uin ? `QQ ${item.uin}` : '', item.timestamp ? new Date(item.timestamp).toLocaleString('zh-CN', { hour12: false }) : '时间未知'].filter(Boolean).join(' · ')}</Text></div><div className="mt-2"><Text size="sm">{item.text || ''}</Text></div></Surface>)}
             </LayerCard.Primary>
           </LayerCard> : null}
 
-          {catalogs.careers.length ? <LayerCard className="col-span-full">
+          {catalogs.careers.length ? <LayerCard>
             <SectionHeader title="职业树" description="职业名称、编号与解锁说明" />
             <LayerCard.Primary className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {catalogs.careers.map((career) => <Surface key={String(career.careerType)} className="rounded-lg p-3"><Text bold>{career.name || '未知职业'}</Text><Text size="xs" variant="secondary">职业编号 {career.careerType}</Text>{career.message ? <div className="mt-2 text-kumo-warning"><Text size="xs">解锁说明：{career.message}</Text></div> : null}</Surface>)}
             </LayerCard.Primary>
           </LayerCard> : null}
 
-          <LayerCard className="col-span-full">
+          <LayerCard>
             <SectionHeader title="托管设置" description="配置保存在 Miku 独立组件中" badge={<Button id="save" variant="primary" icon={<FloppyDisk />}>{dirty ? '保存设置（未保存）' : '保存设置'}</Button>} />
             <LayerCard.Primary>
               <form id="settings" className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={(event) => event.preventDefault()}>
@@ -480,7 +497,7 @@ function App() {
             </LayerCard.Primary>
           </LayerCard>
 
-          <LayerCard className="col-span-full">
+          <LayerCard>
             <SectionHeader title="运行日志" />
             <LayerCard.Primary><pre className="m-0 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-kumo-inverse p-4 font-mono text-xs text-kumo-inverse">{compactLogs(state.logs || []).join('\n') || '尚无日志'}</pre></LayerCard.Primary>
           </LayerCard>
