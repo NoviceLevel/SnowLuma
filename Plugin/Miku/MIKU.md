@@ -31,8 +31,10 @@ QQPET_DATA_DIR=
 - `index.mjs`：唯一的明码维护源文件，也是正式运行入口。
 - `baseline/index.obfuscated.mjs`：切换前的可运行混淆基线，仅用于对照和回退。
 - `baseline/index.readable-pre-local-renames.mjs`：局部变量重命名前的明码回退版本。
+- `baseline/index.pre-local-semantic.mjs`：语义重命名前的明码回退版本。
 - `tools/rename-top-level.mjs`：基于作用域的重命名工具。
 - `tools/rename-locals.mjs`：局部绑定语义推断和全文件唯一命名工具。
+- `tools/rename-mechanical-locals.mjs`：机械式局部标识符重命名工具。
 
 ## 许可证
 
