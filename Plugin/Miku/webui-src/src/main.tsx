@@ -457,7 +457,7 @@ function App() {
           </LayerCard>
 
           {(pending || telemetrySummary.length) ? <LayerCard>
-            <SectionHeader title="成长遥测" description="按任务与实际收益汇总；悬停徽章可查看累计耗时" badge={<Badge variant="purple">{pending ? `${telemetry.length} 次结算 · 当前任务进行中` : `${telemetry.length} 次结算 · 属性增量 ${formatNumber(totalGain, 1)}`}</Badge>} />
+            <SectionHeader title="成长遥测" description="相同任务与收益已合并；次数为全部结算记录的汇总" badge={<Badge variant="purple">{pending ? `${telemetry.length} 次结算 · 当前任务进行中` : `${telemetry.length} 次结算 · 属性增量 ${formatNumber(totalGain, 1)}`}</Badge>} />
             <LayerCard.Primary className="flex flex-wrap gap-2">
               {pending ? <Badge variant="blue">
                 <span title={`${pending.item?.name || '当前任务'} · 已进行 ${duration(Math.max(0, Math.round((now - Date.parse(pending.startedAt || pending.createdAt || new Date().toISOString())) / 1000)))}`}>进行中 · {pending.item?.name || ({ school: '学习', work: '打工', adventure: '冒险' } as AnyRecord)[pending.kind] || '任务'}{pending.attribute ? ` · ${attributeNames[pending.attribute] || pending.attribute}` : ''}</span>
