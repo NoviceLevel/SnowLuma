@@ -194,6 +194,29 @@ function formatAttributeDelta(delta){
   const names={strength:'力量',intelligence:'智力',charm:'魅力'};
   return Object.entries(names).map(([key,label])=>`${label} ${Number(delta[key]||0)>=0?'+':''}${num(delta[key],1)}`).join(' · ');
 }
+function renderAttributeTelemetry(progress={}){
+  const keys=['strength','intelligence','charm'];
+  const settled=(progress.telemetry||[]).filter(item=>item&&item.status==='settled');
+  const pending=progress.pending?.kind&&progress.pending.beforeValues?progress.pending:null;
+  for(const key of keys){
+    const element=$(`${key}-telemetry`);
+    if(!element)continue;
+    const latest=[...settled].reverse().find(item=>item.delta&&Number.isFinite(Number(item.delta[key])));
+    const pendingKey={physical:'strength',culture:'intelligence',art:'charm'}[pending?.attribute];
+    element.classList.remove('is-pending','is-gain','is-empty');
+    if(pendingKey===key){
+      element.textContent='本次任务待结算';
+      element.classList.add('is-pending');
+    }else if(latest){
+      const gain=Number(latest.delta[key]||0);
+      element.textContent=`最近获取 ${gain>=0?'+':''}${num(gain,1)}`;
+      element.classList.add(gain>0?'is-gain':'is-empty');
+    }else{
+      element.textContent='等待任务数据';
+      element.classList.add('is-empty');
+    }
+  }
+}
 function renderTelemetry(progress={}){
   const settled=(progress.telemetry||[]).filter(item=>item&&item.status==='settled').slice(-30).reverse();
   const pending=progress.pending?.kind&&progress.pending.beforeValues?{
@@ -216,6 +239,7 @@ function renderTelemetry(progress={}){
     detail.textContent=item.status==='running'?'等待结算后记录实际属性增量':formatAttributeDelta(item.delta);
     row.append(title,meta,detail);root.append(row);
   }
+  renderAttributeTelemetry(progress);
 }
 function renderCareerTree(careers){
   const signature=JSON.stringify(careers);
