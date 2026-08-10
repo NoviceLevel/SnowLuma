@@ -27,13 +27,11 @@ export function PluginsPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
       setPlugins(await api.plugins.list());
-      setUpdatedAt(new Date());
       if (!quiet) setMessage(null);
     } catch (error) {
       if (!quiet) setMessage(error instanceof Error ? error.message : '插件状态加载失败');
@@ -105,9 +103,6 @@ export function PluginsPage() {
       </Card>
 
       <Card className="overflow-hidden">
-        <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-border/60">
-          <div><CardTitle>已安装插件</CardTitle><CardDescription>{updatedAt ? `更新于 ${updatedAt.toLocaleTimeString('zh-CN', { hour12: false })}` : '正在读取状态'}</CardDescription></div>
-        </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[860px] table-fixed text-sm">
