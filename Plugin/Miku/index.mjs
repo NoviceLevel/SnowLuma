@@ -652,7 +652,9 @@ const PACKETS = {
   otherPet: ["OidbSvcTrpcTcp.0x976c_0", 38764, 0],
   reportEvent: ["OidbSvcTrpcTcp.0x96a6_1", 38566, 1],
   medalGallery: ["OidbSvcTrpcTcp.0x9ac3_0", 39619, 0],
-  interactionHistory: ["OidbSvcTrpcTcp.0x994d_1", 39245, 1]
+  interactionHistory: ["OidbSvcTrpcTcp.0x994d_1", 39245, 1],
+  // Outdoor outing history (school/work/adventure/PK results). From OneKey 1.2.0 queryOutdoorRecords.
+  outdoorHistory: ["OidbSvcTrpcTcp.0x9876_1", 39030, 1]
 };
 function extractPacketHex(payload) {
   if (typeof payload == "string") {
@@ -972,6 +974,49 @@ class QQPetApi {
           eventType: getVarintField(fields, 6)
         }];
       }
+    });
+  }
+  async queryOutdoorRecords(limit = 20, offset = 0) {
+    const requestBody = concatBytes(
+      encodeVarintField(1, Math.max(0, Math.trunc(offset))),
+      encodeVarintField(2, Math.max(1, Math.min(50, Math.trunc(limit) || 20))),
+      encodeStringField(3, this.petId),
+      encodeVarintField(4, 2)
+    );
+    const root = parseProtobufFields((await this.sendOidb(PACKETS.outdoorHistory, requestBody)).body);
+    const readWatermark = getVarintField(root, 4);
+    return getProtobufFields(root, 1).filter(entryField => entryField.wireType === 2).flatMap(entryField => {
+      const entry = parseProtobufFields(entryField.value);
+      const storyId = getStringField(entry, 1).trim();
+      if (!storyId) return [];
+      const timestamp = getVarintField(entry, 2);
+      const resultsBytes = getBytesField(entry, 6);
+      const resultsRoot = resultsBytes.length ? parseProtobufFields(resultsBytes) : new Map();
+      const results = getProtobufFields(resultsRoot, 1).filter(item => item.wireType === 2).map(item => {
+        const fields = parseProtobufFields(item.value);
+        const rawType = getVarintField(fields, 1);
+        return {
+          type: rawType === 1 ? 2 : rawType === 2 ? 3 : rawType,
+          name: getStringField(fields, 2).trim(),
+          value: getVarintField(fields, 3),
+          rightTopDescription: getStringField(fields, 4).trim(),
+          iconUrl: getStringField(fields, 6).trim(),
+          difference: getVarintField(fields, 7),
+          isPetInfo: !!getVarintField(fields, 9),
+          petId: getStringField(fields, 10).trim()
+        };
+      });
+      return [{
+        storyId,
+        timestamp,
+        eventType: getVarintField(entry, 7),
+        grade: getVarintField(entry, 4),
+        title: getStringField(entry, 3).trim(),
+        detail: getStringField(entry, 5).trim(),
+        results,
+        unread: timestamp > readWatermark,
+        outdoorVersion: getVarintField(entry, 8)
+      }];
     });
   }
   async queryValues() {
@@ -1548,6 +1593,8 @@ class AutomationController {
   medalsLoadedAt = 0;
   interactions = [];
   interactionsLoadedAt = 0;
+  outdoorRecords = [];
+  outdoorRecordsLoadedAt = 0;
   get running() {
     return this.active;
   }
@@ -1685,11 +1732,27 @@ class AutomationController {
       } catch {}
       this.interactionsLoadedAt = Date.now();
     }
+    if (!this.outdoorRecordsLoadedAt || Date.now() - this.outdoorRecordsLoadedAt >= 120000) {
+      try {
+        this.outdoorRecords = await client.queryOutdoorRecords(30);
+      } catch {}
+      this.outdoorRecordsLoadedAt = Date.now();
+    }
     const fullProfile = {
       ...profile
     };
     fullProfile.medals = this.medals ?? profile.medals;
     return fullProfile;
+  }
+  async refreshOutdoorRecords(client = null) {
+    try {
+      const api = client || await this.client();
+      this.outdoorRecords = await api.queryOutdoorRecords(30);
+      this.outdoorRecordsLoadedAt = Date.now();
+    } catch (error) {
+      this.host.log("出门记录同步失败：" + (error instanceof Error ? error.message : String(error)));
+    }
+    return this.outdoorRecords;
   }
   async blocked(config, actionLabel) {
     if (config.safeMode) {
@@ -2002,11 +2065,15 @@ class AutomationController {
           }
           this.progress.clearPending();
           this.progress.clearBlock(settleBlockKey);
+          await this.refreshOutdoorRecords(client);
           if (afterValues) {
             this.host.updateStatus({
               values: afterValues,
-              progress: this.progress.snapshot()
+              progress: this.progress.snapshot(),
+              outdoorRecords: this.outdoorRecords
             });
+          } else {
+            this.host.updateStatus({ outdoorRecords: this.outdoorRecords });
           }
           this.host.log("任务已结算并记录：" + story.storyId);
         } catch (error) {
@@ -2054,6 +2121,7 @@ class AutomationController {
       updatedAt: new Date().toISOString(),
       profile: profile,
       interactions: this.interactions,
+      outdoorRecords: this.outdoorRecords,
       fatigue: fatigue,
       values: values,
       story: displayStory,

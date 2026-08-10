@@ -338,6 +338,24 @@ function App() {
   const pending = progress.pending?.kind && progress.pending.beforeValues ? progress.pending : null;
   const targetAttribute = pending?.kind === 'school' && pending.attribute ? pending.attribute : activeAttribute;
   const expectedItem = pending?.kind === 'school' && pending.item ? pending.item : selectedCourse;
+  const outdoorTypeLabel = (eventType: unknown) => (({ 6100: '学习', 6400: '打工', 6700: '冒险', 6900: 'PK' } as AnyRecord)[Number(eventType)] || '出门');
+  const outdoorTypeVariant = (eventType: unknown) => {
+    const type = Number(eventType);
+    if (type === 6100) return 'blue' as const;
+    if (type === 6400) return 'green' as const;
+    if (type === 6700) return 'orange' as const;
+    if (type === 6900) return 'purple' as const;
+    return 'neutral' as const;
+  };
+  const outdoorRecords = Array.isArray(state.outdoorRecords) ? state.outdoorRecords as AnyRecord[] : [];
+  const outdoorReward = (item: AnyRecord) => {
+    const rewards = (item.results || [])
+      .map((value: AnyRecord) => [value.name, value.difference ? `${Number(value.difference) > 0 ? '+' : ''}${value.difference}` : value.value || ''].filter(Boolean).join(' '))
+      .filter(Boolean)
+      .join(' · ');
+    return [item.detail, rewards].filter(Boolean).join(' · ') || '已结算';
+  };
+  // Local attribute deltas remain useful for overview badges; activity table prefers server outdoor history.
   const telemetry = (progress.telemetry || []).filter((item: AnyRecord) => item?.status === 'settled').slice(-30).reverse();
   const totalGain = telemetry.reduce((sum: number, item: AnyRecord) => sum + Object.values(item.delta || {}).reduce((value: number, delta) => value + Math.max(0, Number(delta) || 0), 0), 0);
   const telemetryReward = (item: AnyRecord) => {
@@ -556,8 +574,23 @@ function App() {
 
           <div className="flex flex-col gap-4" hidden={activeView !== 'activity'}>
           <LayerCard className="overflow-x-auto p-0">
-            <SectionHeader title="结算记录" badge={<Badge variant="purple">{telemetry.length} 条 · 属性增量 {formatNumber(totalGain, 1)}</Badge>} />
-            {telemetry.length ? <Table layout="fixed">
+            <SectionHeader title="出门记录" badge={<Badge variant="purple">{outdoorRecords.length} 条 · 服务器同步</Badge>} />
+            {outdoorRecords.length ? <Table layout="fixed">
+              <colgroup><col className="w-[18%]" /><col className="w-[12%]" /><col className="w-[28%]" /><col className="w-[30%]" /><col className="w-[12%]" /></colgroup>
+              <Table.Header variant="compact"><Table.Row><Table.Head>时间</Table.Head><Table.Head>类型</Table.Head><Table.Head>任务</Table.Head><Table.Head>结果</Table.Head><Table.Head>评级</Table.Head></Table.Row></Table.Header>
+              <Table.Body>{outdoorRecords.map((item: AnyRecord, index: number) => <Table.Row key={`${item.storyId || item.timestamp}-${index}`}>
+                <Table.Cell><Text size="xs" variant="secondary">{Number(item.timestamp) > 0 ? new Date(Number(item.timestamp) * 1000).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '--'}</Text></Table.Cell>
+                <Table.Cell><Badge variant={outdoorTypeVariant(item.eventType)}>{outdoorTypeLabel(item.eventType)}{item.unread ? ' · 新' : ''}</Badge></Table.Cell>
+                <Table.Cell><Text size="sm">{item.title || outdoorTypeLabel(item.eventType)}</Text></Table.Cell>
+                <Table.Cell><Text size="sm">{outdoorReward(item)}</Text></Table.Cell>
+                <Table.Cell><Text size="xs" variant="secondary">{item.grade ? `评级 ${item.grade}` : '--'}</Text></Table.Cell>
+              </Table.Row>)}</Table.Body>
+            </Table> : <LayerCard.Primary><Text variant="secondary">尚无服务器出门记录（换机不丢，同步自 QQ 宠物）</Text></LayerCard.Primary>}
+          </LayerCard>
+
+          {telemetry.length ? <LayerCard className="overflow-x-auto p-0">
+            <SectionHeader title="本地属性遥测" badge={<Badge variant="neutral">{telemetry.length} 条 · 属性增量 {formatNumber(totalGain, 1)}</Badge>} />
+            <Table layout="fixed">
               <colgroup><col className="w-[18%]" /><col className="w-[12%]" /><col className="w-[32%]" /><col className="w-[24%]" /><col className="w-[14%]" /></colgroup>
               <Table.Header variant="compact"><Table.Row><Table.Head>结算时间</Table.Head><Table.Head>类型</Table.Head><Table.Head>任务</Table.Head><Table.Head>属性增量</Table.Head><Table.Head>耗时</Table.Head></Table.Row></Table.Header>
               <Table.Body>{telemetry.map((item: AnyRecord, index: number) => <Table.Row key={`${item.storyId || item.settledAt}-${index}`}>
@@ -567,8 +600,8 @@ function App() {
                 <Table.Cell><Text size="sm">{telemetryReward(item)}</Text></Table.Cell>
                 <Table.Cell><Text size="xs" variant="secondary">{duration(item.elapsedSeconds)}</Text></Table.Cell>
               </Table.Row>)}</Table.Body>
-            </Table> : <LayerCard.Primary><Text variant="secondary">尚无结算记录</Text></LayerCard.Primary>}
-          </LayerCard>
+            </Table>
+          </LayerCard> : null}
 
           {profile.medals?.length ? <LayerCard>
             <SectionHeader title="我的徽章" badge={<Badge variant="purple">{profile.medals.filter((item: AnyRecord) => item.acquired).length}/{profile.medals.length} 枚</Badge>} />
