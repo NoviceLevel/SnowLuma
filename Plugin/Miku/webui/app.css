@@ -161,6 +161,13 @@ p { margin: 3px 0; color: #7a728e; font-size: 11px; }
   overflow: hidden;
   border-radius: 11px;
 }
+.metrics .attribute {
+  border-top: 3px solid var(--attribute-color, #7866e8);
+  padding-top: 7px;
+  background: linear-gradient(145deg, #fff, var(--attribute-wash, #f5f2ff));
+}
+.metrics .attribute label { color: var(--attribute-color, #837b95); font-weight: 700; }
+.metrics .attribute strong { color: var(--attribute-color, #5d49c8); font-size: 22px; }
 .metrics article::after {
   content: "";
   position: absolute;
@@ -177,16 +184,18 @@ p { margin: 3px 0; color: #7a728e; font-size: 11px; }
 .metric-telemetry {
   display: block;
   min-height: 12px;
-  margin-top: 3px;
+  margin-top: 5px;
+  padding-top: 4px;
   overflow: hidden;
-  color: #8a8298;
+  border-top: 1px solid #e7e2ef;
+  color: #716982;
   font-size: 11px;
   font-weight: 800;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.metric-telemetry.is-gain { color: #187d53; font-weight: 700; }
+.metric-telemetry.is-gain { color: #187d53; }
 .metric-telemetry.is-pending { color: #a36e00; font-weight: 700; }
 .metric-telemetry.is-empty { color: #9a93a6; }
 .metric-art {
