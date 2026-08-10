@@ -18,7 +18,6 @@ import {
   Backpack,
   Eye,
   EyeSlash,
-  FloppyDisk,
   GithubLogo,
   Play,
   Power,
@@ -194,22 +193,32 @@ function App() {
   const [config, setConfig] = useState<Config>({});
   const [catalogs, setCatalogs] = useState<Catalogs>(emptyCatalogs);
   const [dirty, setDirty] = useState(false);
+  const [saveState, setSaveState] = useState<'saved' | 'dirty' | 'saving' | 'error'>('saved');
   const [accountVisible, setAccountVisible] = useState(false);
   const [activeView, setActiveView] = useState(() => ['overview', 'settings', 'activity'].includes(window.localStorage.getItem('miku:active-view') || '') ? window.localStorage.getItem('miku:active-view') as string : 'overview');
   const [now, setNow] = useState(Date.now());
   const configRef = useRef(config);
+  const dirtyRef = useRef(false);
 
   useEffect(() => { configRef.current = config; }, [config]);
+  useEffect(() => { dirtyRef.current = dirty; }, [dirty]);
   useEffect(() => {
     window.__MIKU_READ_FORM__ = () => ({ ...configRef.current });
     const onState = (event: Event) => {
       const next = (event as CustomEvent<AnyRecord>).detail || {};
       setState(next);
-      if (!dirty) setConfig(next.config || {});
+      if (!dirtyRef.current) setConfig(next.config || {});
     };
-    const onConfig = (event: Event) => { setConfig((event as CustomEvent<Config>).detail || {}); setDirty(false); };
+    const onConfig = (event: Event) => {
+      setConfig((event as CustomEvent<Config>).detail || {});
+      setDirty(false);
+      setSaveState('saved');
+    };
     const onCatalogs = (event: Event) => setCatalogs((event as CustomEvent<Catalogs>).detail || emptyCatalogs);
-    const onSaved = () => setDirty(false);
+    const onDirty = () => { setDirty(true); setSaveState('dirty'); };
+    const onSaving = () => setSaveState('saving');
+    const onSaved = () => { setDirty(false); setSaveState('saved'); };
+    const onSaveError = () => { setSaveState('error'); };
     const onError = (event: Event) => setState((current) => ({ ...current, error: (event as CustomEvent<string>).detail }));
     const onToast = (event: Event) => {
       const detail = (event as CustomEvent<{ message?: string; variant?: 'default' | 'success' | 'error' | 'warning' | 'info' }>).detail;
@@ -218,7 +227,10 @@ function App() {
     window.addEventListener('miku:state', onState);
     window.addEventListener('miku:config', onConfig);
     window.addEventListener('miku:catalogs', onCatalogs);
+    window.addEventListener('miku:form-dirty', onDirty);
+    window.addEventListener('miku:form-saving', onSaving);
     window.addEventListener('miku:form-saved', onSaved);
+    window.addEventListener('miku:form-save-error', onSaveError);
     window.addEventListener('miku:error', onError);
     window.addEventListener('miku:toast', onToast);
     window.dispatchEvent(new Event('miku:ui-ready'));
@@ -227,11 +239,14 @@ function App() {
       window.removeEventListener('miku:state', onState);
       window.removeEventListener('miku:config', onConfig);
       window.removeEventListener('miku:catalogs', onCatalogs);
+      window.removeEventListener('miku:form-dirty', onDirty);
+      window.removeEventListener('miku:form-saving', onSaving);
       window.removeEventListener('miku:form-saved', onSaved);
+      window.removeEventListener('miku:form-save-error', onSaveError);
       window.removeEventListener('miku:error', onError);
       window.removeEventListener('miku:toast', onToast);
     };
-  }, [dirty]);
+  }, []);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
@@ -239,8 +254,11 @@ function App() {
 
   const setField = (name: string, value: string | boolean) => {
     const normalized = numericFields.has(name) ? Number(value) : value;
-    setConfig((current) => ({ ...current, [name]: normalized }));
+    const next = { ...configRef.current, [name]: normalized };
+    configRef.current = next;
+    setConfig(next);
     setDirty(true);
+    setSaveState('dirty');
     queueMicrotask(() => window.dispatchEvent(new CustomEvent('miku:form-change', { detail: { name, value: normalized } })));
   };
   const input = (name: string, label: string, type: 'text' | 'number' | 'time' = 'text', props: AnyRecord = {}) => (
@@ -601,7 +619,9 @@ function App() {
           <section className="flex flex-col gap-3" aria-labelledby="settings-title" hidden={activeView !== 'settings'}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <Text as="h2" variant="heading2" id="settings-title">托管设置</Text>
-              <Button id="save" variant="primary" icon={<FloppyDisk />}>{dirty ? '保存设置（未保存）' : '保存设置'}</Button>
+              <Badge variant={saveState === 'error' ? 'red' : saveState === 'saved' ? 'green' : 'orange'}>
+                {saveState === 'saving' ? '正在保存…' : saveState === 'dirty' ? '将自动保存…' : saveState === 'error' ? '保存失败' : '已自动保存'}
+              </Badge>
             </div>
             <form id="settings" onSubmit={(event) => event.preventDefault()}>
               <Grid variant="2up" gap="sm">

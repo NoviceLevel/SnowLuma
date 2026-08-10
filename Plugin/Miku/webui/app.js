@@ -9,13 +9,16 @@ let latestState = {};
 let automationRunning = false;
 let formDirty = false;
 let savingConfig = false;
+let pendingSave = false;
 let catalogsLoading = false;
 let initialCatalogLoaded = false;
 let statusTicket = 0;
 let timer;
+let saveTimer;
 let storyCountdownTimer;
 let bootstrapped = false;
 let storyCountdown = { storyId: '', remainingSeconds: 0, durationSeconds: 0, syncedAt: 0, finished: false };
+const AUTO_SAVE_DELAY_MS = 400;
 
 async function request(path, method = 'GET', body) {
   const token = window.__QQPET_API_TOKEN__ || '';
@@ -100,8 +103,67 @@ function fillForm(config, force = false) {
 }
 
 function applyControlState() {
-  $('save')?.removeAttribute('disabled');
   $('start')?.removeAttribute('disabled');
+}
+
+async function saveConfig() {
+  if (savingConfig) {
+    pendingSave = true;
+    return;
+  }
+  clearTimeout(saveTimer);
+  saveTimer = undefined;
+  savingConfig = true;
+  statusTicket += 1;
+  dispatch('miku:form-saving');
+  try {
+    latestConfig = await request('/config', 'PUT', readForm());
+    formDirty = false;
+    fillForm(latestConfig, true);
+    dispatch('miku:form-saved');
+    scheduleStatusRefresh();
+  } catch (error) {
+    showError(error.message);
+    dispatch('miku:form-save-error', String(error.message || ''));
+  } finally {
+    statusTicket += 1;
+    savingConfig = false;
+    if (pendingSave || formDirty) {
+      pendingSave = false;
+      void saveConfig();
+    }
+  }
+}
+
+function scheduleAutoSave() {
+  formDirty = true;
+  dispatch('miku:form-dirty');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    void saveConfig();
+  }, AUTO_SAVE_DELAY_MS);
+}
+
+function flushAutoSave() {
+  if (!formDirty && !pendingSave && !savingConfig) return;
+  clearTimeout(saveTimer);
+  saveTimer = undefined;
+  const token = window.__QQPET_API_TOKEN__ || '';
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  try {
+    void fetch(API + '/config', {
+      method: 'PUT',
+      credentials: 'same-origin',
+      headers,
+      body: JSON.stringify(readForm()),
+      keepalive: true,
+    });
+    formDirty = false;
+    pendingSave = false;
+  } catch {
+    // best-effort on unload
+  }
 }
 
 function render(state) {
@@ -185,32 +247,18 @@ function bootstrap() {
   $('once').onclick = () => {
     if (window.confirm('执行一轮自动化检查？安全模式下不会发送写请求。')) void act('/run-once', '本轮执行完成');
   };
-  window.addEventListener('miku:form-change', () => { formDirty = true; });
-  $('save').onclick = async () => {
-    savingConfig = true;
-    statusTicket += 1;
-    try {
-      latestConfig = await request('/config', 'PUT', readForm());
-      formDirty = false;
-      fillForm(latestConfig, true);
-      dispatch('miku:form-saved');
-      scheduleStatusRefresh();
-      toast('设置已保存');
-    } catch (error) {
-      showError(error.message);
-    } finally {
-      statusTicket += 1;
-      savingConfig = false;
-    }
-  };
+  window.addEventListener('miku:form-change', () => { scheduleAutoSave(); });
   storyCountdownTimer = setInterval(updateDocumentTitle, 1000);
   load().then(scheduleStatusRefresh);
-  window.addEventListener('beforeunload', (event) => {
+  window.addEventListener('beforeunload', () => {
     clearTimeout(timer);
     clearInterval(storyCountdownTimer);
-    if (formDirty) {
-      event.preventDefault();
-      event.returnValue = '';
+    flushAutoSave();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && (formDirty || pendingSave)) {
+      clearTimeout(saveTimer);
+      void saveConfig();
     }
   });
 }
