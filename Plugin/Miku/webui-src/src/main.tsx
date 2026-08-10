@@ -143,10 +143,10 @@ function CatalogPreview({ item, fallback }: { item?: CatalogOption; fallback: st
 
 function SettingSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <LayerCard>
+    <LayerCard className="h-full">
       <LayerCard.Secondary><Text as="h3" variant="heading3">{title}</Text></LayerCard.Secondary>
       <LayerCard.Primary>
-        <Grid variant="2up" gap="base">
+        <Grid variant="2up" gap="sm">
           {Children.toArray(children).map((child, index) => {
             const element = isValidElement<{ 'data-miku-wide'?: boolean }>(child) ? child : null;
             const wide = Boolean(element?.props['data-miku-wide']);
@@ -374,17 +374,19 @@ function App() {
           <LayerCard>
             <SectionHeader title="自动托管" description="按当前设置自动照顾宠物并执行任务" badge={<Badge variant={automationRunning ? 'green' : 'neutral'}>{automationRunning ? '运行中' : '已停止'}</Badge>} />
             <LayerCard.Primary>
-              <Toolbar size="sm" aria-label="自动托管操作" className="w-fit max-w-full">
-                <Toolbar.Button id="start" icon={automationRunning ? <Power /> : <Play />}>{automationRunning ? '停止托管' : '启动托管'}</Toolbar.Button>
-                <Toolbar.Button id="refresh" icon={<ArrowClockwise />}>刷新</Toolbar.Button>
-                <Toolbar.Button id="once" icon={<Sparkle />}>执行一轮</Toolbar.Button>
-              </Toolbar>
-              {state.error ? <Badge variant="red">{state.error}</Badge> : null}
+              <div className="flex flex-wrap items-center gap-3">
+                <Toolbar size="sm" aria-label="自动托管操作" className="max-w-full">
+                  <Toolbar.Button id="start" icon={automationRunning ? <Power /> : <Play />}>{automationRunning ? '停止托管' : '启动托管'}</Toolbar.Button>
+                  <Toolbar.Button id="refresh" icon={<ArrowClockwise />}>刷新</Toolbar.Button>
+                  <Toolbar.Button id="once" icon={<Sparkle />}>执行一轮</Toolbar.Button>
+                </Toolbar>
+                {state.error ? <Badge variant="red">{state.error}</Badge> : null}
+              </div>
             </LayerCard.Primary>
           </LayerCard>
 
-          <Grid variant="2up" gap="base">
-            <GridItem><LayerCard>
+          <Grid variant="2up" gap="sm">
+            <GridItem><LayerCard className="h-full">
               <SectionHeader title="当前任务" />
               <LayerCard.Primary className="flex items-center gap-4">
                 {story.storyId ? (() => {
@@ -399,7 +401,7 @@ function App() {
               </LayerCard.Primary>
             </LayerCard></GridItem>
 
-            <GridItem><LayerCard>
+            <GridItem><LayerCard className="h-full">
               <SectionHeader title="背包" />
               <LayerCard.Primary><DefinitionList items={[
                 ['饼干', inventory.biscuits ?? '--'], ['虾仁', inventory.shrimp ?? '--'], ['香皂片', inventory.soap ?? '--'], ['沐浴球', inventory.bathBall ?? '--'],
@@ -438,13 +440,15 @@ function App() {
           <div className="flex flex-col gap-4" hidden={activeView !== 'activity'}>
           {profile.medals?.length ? <LayerCard>
             <SectionHeader title="我的徽章" description="全部徽章、获得状态与佩戴状态" badge={<Badge variant="purple">{profile.medals.filter((item: AnyRecord) => item.acquired).length}/{profile.medals.length} 枚</Badge>} />
-            <LayerCard.Primary className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {profile.medals.map((item: AnyRecord) => <Surface key={item.id} className={`rounded-lg p-3 ${item.acquired ? '' : 'opacity-50 grayscale'}`} title={[item.requirement, item.description].filter(Boolean).join('\n')}>
+            <LayerCard.Primary>
+              <Grid variant="4up" gap="sm">
+              {profile.medals.map((item: AnyRecord) => <GridItem key={item.id}><Surface className={`rounded-lg p-3 ${item.acquired ? '' : 'opacity-50 grayscale'}`} title={[item.requirement, item.description].filter(Boolean).join('\n')}>
                 <div className="flex items-center gap-3">
                 <img src={item.imageUrl} alt={item.name} loading="lazy" className="size-14 object-contain" />
                 <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><div className="truncate"><Text bold>{item.name}</Text></div>{item.equipped ? <Badge variant="purple">已佩戴</Badge> : null}</div><div className="truncate"><Text size="xs" variant="secondary">{[item.category, item.progress].filter(Boolean).join(' · ')}</Text></div></div>
                 </div>
-              </Surface>)}
+              </Surface></GridItem>)}
+              </Grid>
             </LayerCard.Primary>
           </LayerCard> : null}
 
@@ -484,7 +488,7 @@ function App() {
               <Button id="save" variant="primary" icon={<FloppyDisk />}>{dirty ? '保存设置（未保存）' : '保存设置'}</Button>
             </div>
             <form id="settings" onSubmit={(event) => event.preventDefault()}>
-              <Grid variant="2up" gap="base">
+              <Grid variant="2up" gap="sm">
                 <GridItem><SettingSection title="培训策略">
                   {select('schoolSelectionMode', '属性策略', [['lowest', '动态补最低属性'], ['rotation', '轮换三项属性'], ['fixed', '固定属性']])}
                   <div className="flex items-end"><Badge variant="purple">当前学习属性：{attributeNames[activeAttribute] || '--'}（{modeLabel}）</Badge></div>
