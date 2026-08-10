@@ -361,9 +361,10 @@ function App() {
           <Grid variant="6up" gap="sm">
             {(['strength', 'intelligence', 'charm'] as const).map((key) => {
               const attribute = ({ strength: 'physical', intelligence: 'culture', charm: 'art' })[key];
-              const gain = attribute === targetAttribute ? expectedGain(expectedItem, targetAttribute) ?? 0 : 0;
+              const isTrainingTarget = attribute === targetAttribute;
+              const gain = isTrainingTarget ? expectedGain(expectedItem, targetAttribute) ?? 0 : 0;
               const label = ({ strength: '力量', intelligence: '智力', charm: '魅力' })[key];
-              return <GridItem key={key}><MetricCard label={`${label} · 下次训练`} value={`${gain >= 0 ? '+' : ''}${formatNumber(gain)}`} detail={`当前 ${formatNumber(values[key])}`} badge={<Badge variant={({ strength: 'red', intelligence: 'blue', charm: 'orange' } as const)[key]}>{({ strength: '力', intelligence: '智', charm: '魅' })[key]}</Badge>} /></GridItem>;
+              return <GridItem key={key}><MetricCard label={isTrainingTarget ? `${label} · 下次训练` : label} value={isTrainingTarget ? `${gain >= 0 ? '+' : ''}${formatNumber(gain)}` : formatNumber(values[key])} detail={isTrainingTarget ? `当前 ${formatNumber(values[key])}` : '本次不训练'} badge={<Badge variant={({ strength: 'red', intelligence: 'blue', charm: 'orange' } as const)[key]}>{({ strength: '力', intelligence: '智', charm: '魅' })[key]}</Badge>} /></GridItem>;
             })}
             <GridItem><MetricCard label="经验" value={profile.levelExperience ? `${formatNumber(profile.currentExperience)} / ${formatNumber(profile.levelExperience)}` : formatNumber(profile.currentExperience)} detail={profile.experienceRate ? `成长倍率 ×${formatNumber(profile.experienceRate, 1)}` : undefined} /></GridItem>
             <GridItem><MetricCard label="等级" value={profile.level ? `Lv.${profile.level}` : '--'} detail={profile.levelExperience ? `升级还需 ${Math.max(0, Number(profile.levelExperience) - Number(profile.currentExperience || 0))}` : undefined} /></GridItem>
