@@ -158,6 +158,8 @@ function createDailyProgress() {
     visitedTargetIds: [],
     attributeBaseline: null,
     dailyExperienceGain: 0,
+    goldFloor: null,
+    dailyGoldGain: 0,
     telemetry: [],
     recentFailures: []
   };
@@ -230,6 +232,8 @@ class ProgressStore {
           charm: Math.max(0, Number(rest.attributeBaseline.charm) || 0)
         } : null,
         dailyExperienceGain: Math.max(0, Math.trunc(Number(rest.dailyExperienceGain) || 0)),
+        goldFloor: rest.goldFloor === null || rest.goldFloor === void 0 ? null : Math.max(0, Number(rest.goldFloor) || 0),
+        dailyGoldGain: Math.max(0, Math.trunc(Number(rest.dailyGoldGain) || 0)),
         telemetry: Array.isArray(rest.telemetry) ? rest.telemetry.slice(-100) : [],
         recentFailures: Array.isArray(rest.recentFailures) ? rest.recentFailures.slice(-50) : []
       };
@@ -267,6 +271,8 @@ class ProgressStore {
         visitedTargetIds: [],
         attributeBaseline: null,
         dailyExperienceGain: 0,
+        goldFloor: null,
+        dailyGoldGain: 0,
         recentFailures: []
       };
       this.save();
@@ -416,6 +422,22 @@ class ProgressStore {
         this.state.dailyExperienceGain = attributeNames.reduce((total, name) => total + Math.max(0, attributes[name] - attributeBaseline[name]), 0);
       }
     }
+    if (Number.isFinite(Number(values.gold))) {
+      const gold = Math.max(0, Number(values.gold));
+      if (this.state.goldFloor === null) {
+        this.state.goldFloor = gold;
+      } else if (gold < this.state.goldFloor) {
+        // Ignore suspicious collapse-to-zero readings that would later inflate dailyGoldGain.
+        const previous = this.state.goldFloor;
+        const isGlitchZero = gold === 0 && previous >= 10 && (previous - gold) / previous >= 0.5;
+        if (!isGlitchZero) {
+          this.state.goldFloor = gold;
+        }
+      } else if (gold > this.state.goldFloor) {
+        this.state.dailyGoldGain += gold - this.state.goldFloor;
+        this.state.goldFloor = gold;
+      }
+    }
     this.save();
     return this.state.dailyExperienceGain;
   }
@@ -435,9 +457,7 @@ class ProgressStore {
     this.save();
   }
   isTaskDiscouraged(kind, windowMs = 600000, threshold = 2) {
-    const recent = this.snapshot().recentFailures;
-    const cutoff = Date.now() - windowMs;
-    return recent.filter(entry => entry.kind === kind && Date.parse(entry.at) >= cutoff).length >= threshold;
+    return isFailureDiscouraged(kind, this.snapshot().recentFailures, windowMs, threshold);
   }
 }
 function concatBytes(...chunks) {
@@ -602,7 +622,11 @@ class TaskFallbackError extends Error {
 function isFallbackWorthy(error) {
   if (error instanceof TaskFallbackError) return true;
   const message = error instanceof Error ? error.message : String(error);
-  return /不可用|不存在|尚未|不满足|未达到|条件不|not found|not available|requirement|未达到.*要求/i.test(message);
+  return /不可用|暂无可用|暂无|没有开放|没有可执行|无可|不存在|尚未|不满足|未达到|条件不|not found|not available|no (?:available|open)|requirement/i.test(message);
+}
+function isFailureDiscouraged(kind, recentFailures = [], windowMs = 600000, threshold = 2) {
+  const cutoff = Date.now() - windowMs;
+  return recentFailures.filter(entry => entry.kind === kind && Number.isFinite(Date.parse(entry.at)) && Date.parse(entry.at) >= cutoff).length >= threshold;
 }
 function isCareerRequirementError(error) {
   const message = error instanceof Error ? error.message : String(error);
@@ -1387,7 +1411,9 @@ function selectSchoolOrWork(config, values, counts) {
     school: config.schoolEnabled && values.gold >= config.coinThreshold,
     work: config.workEnabled && (!config.workTimesPerDay || (counts.work ?? 0) < config.workTimesPerDay)
   };
-  return (config.taskPriority === "work" ? ["work", "school"] : ["school", "work"]).find(kind => available[kind]) ?? null;
+  // smart 无目录时与 buildCandidateList 默认顺序一致：先学后工；真正的 RPS 择优在 runOnce 中异步完成。
+  const order = config.taskPriority === "work" ? ["work", "school"] : ["school", "work"];
+  return order.find(kind => available[kind]) ?? null;
 }
 function fatigueAction(config, fatigue) {
   if (!fatigue.fatigued || !fatigue.tier) {
@@ -1420,9 +1446,9 @@ function isIrrecoverableSettleError(error) {
 function compareEmployableFriends(left, right) {
   return right.bonus - left.bonus || right.totalReward - left.totalReward || right.target.level - left.target.level || left.target.uin.localeCompare(right.target.uin);
 }
-function buildCandidateList(config, values, counts, recentFailures) {
+function buildCandidateList(config, values, counts, recentFailures, now = new Date()) {
   const candidates = [];
-  if (isAdventureWindowOpen(config) && (!config.adventureTimesPerDay || (counts.adventure ?? 0) < config.adventureTimesPerDay)) {
+  if (isAdventureWindowOpen(config, now) && (!config.adventureTimesPerDay || (counts.adventure ?? 0) < config.adventureTimesPerDay)) {
     candidates.push("adventure");
   }
   const schoolWork = config.taskPriority === "smart"
@@ -1436,31 +1462,52 @@ function buildCandidateList(config, values, counts, recentFailures) {
     }
   }
   return candidates.sort((left, right) => {
-    const leftDiscouraged = recentFailures.some(entry => entry.kind === left && Date.now() - Date.parse(entry.at) < 600000);
-    const rightDiscouraged = recentFailures.some(entry => entry.kind === right && Date.now() - Date.parse(entry.at) < 600000);
+    const leftDiscouraged = isFailureDiscouraged(left, recentFailures);
+    const rightDiscouraged = isFailureDiscouraged(right, recentFailures);
     if (leftDiscouraged !== rightDiscouraged) return leftDiscouraged ? 1 : -1;
     return 0;
   });
 }
-async function estimateBestTaskRps(api, config) {
+function orderCandidatesForSmart(candidates, preferred) {
+  if (!preferred || !candidates.includes(preferred)) {
+    return candidates.slice();
+  }
+  const adventure = candidates.filter(kind => kind === "adventure");
+  const rest = candidates.filter(kind => kind !== "adventure" && kind !== preferred);
+  return [...adventure, preferred, ...rest];
+}
+async function estimateBestTaskRps(api, config, allowedKinds = null) {
+  const allowSchool = config.schoolEnabled !== false && (!allowedKinds || allowedKinds.includes("school"));
+  const allowWork = config.workEnabled !== false && (!allowedKinds || allowedKinds.includes("work"));
   let bestSchoolRps = 0;
   let bestWorkRps = 0;
-  try {
-    const courses = (await api.querySchoolCourses()).filter(course => course.canDo && course.subEventType > 0);
-    const bestCourse = courses.sort(compareRewardPerSecond)[0];
-    if (bestCourse) bestSchoolRps = parseRewardAmount(bestCourse.reward) / Math.max(1, parseDurationSeconds(bestCourse.duration));
-  } catch {}
-  try {
-    const overview = await api.queryWorkOverview();
-    const availableCareer = overview.careers.find(career => career.available);
-    if (availableCareer) {
-      const jobs = (await api.queryWorkJobs(availableCareer.careerType)).filter(job => job.canDo && job.subEventType > 0);
-      const bestJob = jobs.sort(compareRewardPerSecond)[0];
-      if (bestJob) bestWorkRps = parseRewardAmount(bestJob.reward) / Math.max(1, parseDurationSeconds(bestJob.duration));
-    }
-  } catch {}
-  if (bestSchoolRps > 0 && bestSchoolRps >= bestWorkRps) return "school";
-  if (bestWorkRps > 0) return "work";
+  if (allowSchool) {
+    try {
+      const courses = (await api.querySchoolCourses()).filter(course => course.canDo && course.subEventType > 0);
+      const bestCourse = courses.sort(compareRewardPerSecond)[0];
+      if (bestCourse) bestSchoolRps = parseRewardAmount(bestCourse.reward) / Math.max(1, parseDurationSeconds(bestCourse.duration));
+    } catch {}
+  }
+  if (allowWork) {
+    try {
+      const overview = await api.queryWorkOverview();
+      const availableCareer = overview.careers.find(career => career.available);
+      if (availableCareer) {
+        const jobs = (await api.queryWorkJobs(availableCareer.careerType)).filter(job => job.canDo && job.subEventType > 0);
+        const bestJob = jobs.sort(compareRewardPerSecond)[0];
+        if (bestJob) bestWorkRps = parseRewardAmount(bestJob.reward) / Math.max(1, parseDurationSeconds(bestJob.duration));
+      }
+    } catch {}
+  }
+  if (allowSchool && bestSchoolRps > 0 && bestSchoolRps >= bestWorkRps) return "school";
+  if (allowWork && bestWorkRps > 0) return "work";
+  if (allowedKinds?.length) {
+    const fallback = allowedKinds.find(kind => kind === "school" && allowSchool || kind === "work" && allowWork);
+    if (fallback) return fallback;
+    return allowedKinds[0];
+  }
+  if (allowWork && !allowSchool) return "work";
+  if (allowSchool && !allowWork) return "school";
   return config.taskPriority === "work" ? "work" : "school";
 }
 function isAdventureWindowOpen(config, now = new Date()) {
@@ -1477,10 +1524,11 @@ function hasFreeAvailableCourses(courses) {
   });
 }
 function decideNextTask(config, values, counts, now = new Date(), recentFailures = []) {
-  if (isAdventureWindowOpen(config, now) && (!config.adventureTimesPerDay || (counts.adventure ?? 0) < config.adventureTimesPerDay)) {
-    return "adventure";
-  }
-  return selectSchoolOrWork(config, values, counts);
+  const candidates = buildCandidateList(config, values, counts, recentFailures, now).filter(kind => {
+    if (kind === "school" && values.gold < config.coinThreshold) return false;
+    return true;
+  });
+  return candidates[0] ?? null;
 }
 class AutomationController {
   constructor(host, progress) {
@@ -2252,17 +2300,20 @@ class AutomationController {
         this.lastNextCheckHint = "idle";
         return null;
       }
-      const maxAttempts = Math.min(2, effectiveCandidates.length);
+      let orderedCandidates = effectiveCandidates.slice();
+      const schoolWorkCandidates = effectiveCandidates.filter(kind => kind === "school" || kind === "work");
+      if (config.taskPriority === "smart" && schoolWorkCandidates.length > 0) {
+        try {
+          const preferred = await estimateBestTaskRps(api, config, schoolWorkCandidates);
+          orderedCandidates = orderCandidatesForSmart(effectiveCandidates, preferred);
+        } catch {}
+      }
+      const maxAttempts = Math.min(2, orderedCandidates.length);
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        let candidate = effectiveCandidates[attempt];
-        if (config.taskPriority === "smart" && (candidate === "school" || candidate === "work")) {
-          try {
-            candidate = await estimateBestTaskRps(api, config);
-          } catch {}
-        }
+        const candidate = orderedCandidates[attempt];
         const actionLabel = candidate === "school" ? "学习" : candidate === "work" ? "打工" : "冒险";
         if (await this.blocked(config, actionLabel)) {
-          return candidate;
+          continue;
         }
         try {
           await this.startTaskByKind(api, config, values, candidate);
@@ -2631,10 +2682,14 @@ class OneBotHttpClient {
     this.baseUrl = normalizeOneBotUrl(options.baseUrl);
     this.accessToken = options.accessToken?.trim() ?? "";
     this.timeoutMs = Math.max(1000, options.timeoutMs ?? 15000);
+    this.maxRetries = Math.max(0, options.maxRetries ?? 2);
+    this.retryDelayMs = Math.max(100, options.retryDelayMs ?? 500);
   }
   baseUrl;
   accessToken;
   timeoutMs;
+  maxRetries;
+  retryDelayMs;
   async call(action, params = {}) {
     if (!/^[.a-zA-Z0-9_]+$/.test(action)) {
       throw new OneBotError("OneBot action 名称无效", action);
@@ -2646,30 +2701,38 @@ class OneBotHttpClient {
     if (this.accessToken) {
       headers.Authorization = "Bearer " + this.accessToken;
     }
-    let response;
-    try {
-      response = await this.fetchImpl(this.baseUrl + "/" + action, {
-        method: "POST",
-        headers: headers,
-        body: JSON.stringify(params),
-        signal: AbortSignal.timeout(this.timeoutMs)
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new OneBotError("OneBot 请求失败：" + message, action);
+    let networkError = null;
+    for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, this.retryDelayMs * attempt));
+      }
+      let response;
+      try {
+        response = await this.fetchImpl(this.baseUrl + "/" + action, {
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify(params),
+          signal: AbortSignal.timeout(this.timeoutMs)
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        networkError = new OneBotError("OneBot 请求失败：" + message, action);
+        continue;
+      }
+      let payload;
+      try {
+        payload = await response.json();
+      } catch {
+        throw new OneBotError("OneBot 返回了非 JSON 响应（HTTP " + response.status + "）", action, response.status);
+      }
+      const retcode = Number(payload.retcode ?? (payload.status === "ok" ? 0 : -1));
+      if (!response.ok || payload.status !== "ok" || retcode !== 0) {
+        const wording = payload.message || payload.wording || "HTTP " + response.status;
+        throw new OneBotError("OneBot action " + action + " 失败：" + wording, action, response.status, retcode);
+      }
+      return payload.data;
     }
-    let payload;
-    try {
-      payload = await response.json();
-    } catch {
-      throw new OneBotError("OneBot 返回了非 JSON 响应（HTTP " + response.status + "）", action, response.status);
-    }
-    const retcode = Number(payload.retcode ?? (payload.status === "ok" ? 0 : -1));
-    if (!response.ok || payload.status !== "ok" || retcode !== 0) {
-      const wording = payload.message || payload.wording || "HTTP " + response.status;
-      throw new OneBotError("OneBot action " + action + " 失败：" + wording, action, response.status, retcode);
-    }
-    return payload.data;
+    throw networkError;
   }
 }
 const MAX_REQUEST_BODY_BYTES = 262144;
@@ -3064,4 +3127,4 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exitCode = 1;
   });
 }
-export { AutomationController, DEFAULT_CONFIG, ProgressStore, QQPetPlugin, TaskFallbackError, buildCandidateList, compareEmployableFriends, compareRewardPerSecond, createApiToken, createWebServer, decideNextTask, estimateBestTaskRps, fatigueAction, hasFreeAvailableCourses, isAdventureWindowOpen, isFallbackWorthy, isIrrecoverableSettleError, isWithinTimeWindow, normalizeConfig, parseDurationSeconds, parseFatigueStatus, parseRewardAmount, resolveStaticAssetPath, rotateSchoolAttribute, selectSchoolAttribute, selectSchoolOrWork, writeJsonAtomically };
+export { AutomationController, DEFAULT_CONFIG, OneBotHttpClient, ProgressStore, QQPetPlugin, TaskFallbackError, buildCandidateList, compareEmployableFriends, compareRewardPerSecond, createApiToken, createWebServer, decideNextTask, estimateBestTaskRps, fatigueAction, hasFreeAvailableCourses, isAdventureWindowOpen, isFailureDiscouraged, isFallbackWorthy, isIrrecoverableSettleError, isWithinTimeWindow, normalizeConfig, orderCandidatesForSmart, parseDurationSeconds, parseFatigueStatus, parseRewardAmount, resolveStaticAssetPath, rotateSchoolAttribute, selectSchoolAttribute, selectSchoolOrWork, writeJsonAtomically };

@@ -7,19 +7,23 @@ import { fileURLToPath } from 'node:url';
 
 import {
   DEFAULT_CONFIG,
+  OneBotHttpClient,
   ProgressStore,
   TaskFallbackError,
   buildCandidateList,
   compareRewardPerSecond,
   createWebServer,
   decideNextTask,
+  estimateBestTaskRps,
   fatigueAction,
   hasFreeAvailableCourses,
   isAdventureWindowOpen,
+  isFailureDiscouraged,
   isFallbackWorthy,
   isIrrecoverableSettleError,
   isWithinTimeWindow,
   normalizeConfig,
+  orderCandidatesForSmart,
   parseDurationSeconds,
   parseFatigueStatus,
   parseRewardAmount,
@@ -201,17 +205,26 @@ describe('Miku decision helpers', () => {
       taskPriority: 'smart',
     };
     const evening = new Date('2026-08-10T21:00:00');
-    const candidates = buildCandidateList(base, { gold: 100 }, { adventure: 0, work: 0 }, []);
+    const candidates = buildCandidateList(base, { gold: 100 }, { adventure: 0, work: 0 }, [], evening);
     assert.ok(candidates.includes('adventure'));
     assert.ok(candidates.includes('school'));
     assert.ok(candidates.includes('work'));
     assert.equal(candidates[0], 'adventure');
 
-    const recentFailures = [{ kind: 'school', at: new Date(Date.now() - 60000).toISOString() }];
-    const discouraged = buildCandidateList(base, { gold: 100 }, { adventure: 0, work: 0 }, recentFailures);
+    const singleFailure = [{ kind: 'school', at: new Date(Date.now() - 60000).toISOString() }];
+    const afterOne = buildCandidateList(base, { gold: 100 }, { adventure: 0, work: 0 }, singleFailure, evening);
+    assert.ok(afterOne.indexOf('school') < afterOne.indexOf('work'), 'single failure should not discourage school');
+
+    const recentFailures = [
+      { kind: 'school', at: new Date(Date.now() - 120000).toISOString() },
+      { kind: 'school', at: new Date(Date.now() - 60000).toISOString() },
+    ];
+    const discouraged = buildCandidateList(base, { gold: 100 }, { adventure: 0, work: 0 }, recentFailures, evening);
     const schoolIdx = discouraged.indexOf('school');
     const workIdx = discouraged.indexOf('work');
-    assert.ok(schoolIdx > workIdx, 'school should be sorted after work when discouraged');
+    assert.ok(schoolIdx > workIdx, 'school should be sorted after work when discouraged twice');
+    assert.equal(isFailureDiscouraged('school', recentFailures), true);
+    assert.equal(isFailureDiscouraged('school', singleFailure), false);
   });
 
   test('records and checks recent failures with rollover', async () => {
@@ -219,10 +232,26 @@ describe('Miku decision helpers', () => {
     const filePath = path.join(directory, 'daily-progress.json');
     const store = new ProgressStore(filePath);
     store.recordFailure('school');
+    assert.equal(store.isTaskDiscouraged('school'), false);
     store.recordFailure('school');
     assert.equal(store.isTaskDiscouraged('school'), true);
     assert.equal(store.isTaskDiscouraged('work'), false);
     assert.equal(store.snapshot().recentFailures.length, 2);
+  });
+
+  test('tracks daily gold gain and ignores zero-collapse glitches', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'miku-gold-'));
+    const store = new ProgressStore(path.join(directory, 'daily-progress.json'));
+    store.recordAttributes({ strength: 1, intelligence: 1, charm: 1, gold: 1000 });
+    store.recordAttributes({ strength: 1, intelligence: 1, charm: 1, gold: 800 });
+    store.recordAttributes({ strength: 1, intelligence: 1, charm: 1, gold: 900 });
+    assert.equal(store.snapshot().dailyGoldGain, 100);
+    store.recordAttributes({ strength: 1, intelligence: 1, charm: 1, gold: 0 });
+    store.recordAttributes({ strength: 1, intelligence: 1, charm: 1, gold: 900 });
+    assert.equal(store.snapshot().dailyGoldGain, 100);
+    assert.equal(store.snapshot().goldFloor, 900);
+    store.recordAttributes({ strength: 1, intelligence: 1, charm: 1, gold: 950 });
+    assert.equal(store.snapshot().dailyGoldGain, 150);
   });
 
   test('clears recentFailures on daily rollover', async () => {
@@ -264,9 +293,99 @@ describe('Miku decision helpers', () => {
     assert.equal(isFallbackWorthy(fallbackError), true);
     assert.equal(isFallbackWorthy(new Error('课程当前不可用')), true);
     assert.equal(isFallbackWorthy(new Error('职业尚未开放')), true);
+    assert.equal(isFallbackWorthy(new Error('当前暂无可用的力量课程')), true);
+    assert.equal(isFallbackWorthy(new Error('服务器当前没有开放的职业')), true);
+    assert.equal(isFallbackWorthy(new Error('服务器当前没有可执行的打工岗位')), true);
+    assert.equal(isFallbackWorthy(new Error('服务器当前没有可执行的冒险')), true);
     assert.equal(isFallbackWorthy(new Error('settle already completed')), false);
     assert.equal(isFallbackWorthy(new Error('网络超时')), false);
     assert.equal(isFallbackWorthy(new Error('OneBot send_packet 失败')), false);
+  });
+
+  test('orders smart candidates once and keeps preferred inside allowed set', async () => {
+    assert.deepEqual(orderCandidatesForSmart(['adventure', 'school', 'work'], 'work'), ['adventure', 'work', 'school']);
+    assert.deepEqual(orderCandidatesForSmart(['school', 'work'], 'work'), ['work', 'school']);
+    assert.deepEqual(orderCandidatesForSmart(['school', 'work'], 'adventure'), ['school', 'work']);
+
+    const api = {
+      querySchoolCourses: async () => [{ canDo: true, subEventType: 1, reward: '金币 10', duration: '10分钟' }],
+      queryWorkOverview: async () => ({ careers: [{ available: true, careerType: 1 }] }),
+      queryWorkJobs: async () => [{ canDo: true, subEventType: 2, reward: '金币 100', duration: '1分钟' }],
+    };
+    assert.equal(await estimateBestTaskRps(api, { ...DEFAULT_CONFIG, schoolEnabled: true, workEnabled: true }, ['school']), 'school');
+    assert.equal(await estimateBestTaskRps(api, { ...DEFAULT_CONFIG, schoolEnabled: false, workEnabled: true }), 'work');
+    assert.equal(await estimateBestTaskRps(api, { ...DEFAULT_CONFIG, schoolEnabled: true, workEnabled: true }, ['work']), 'work');
+  });
+
+  test('decideNextTask uses candidate list and respects coin threshold', () => {
+    const evening = new Date('2026-08-10T21:00:00');
+    const base = {
+      ...DEFAULT_CONFIG,
+      schoolEnabled: true,
+      workEnabled: true,
+      adventureEnabled: true,
+      adventureStartTime: '20:00',
+      adventureEndTime: '22:00',
+      adventureTimesPerDay: 3,
+      coinThreshold: 50,
+      taskPriority: 'smart',
+    };
+    assert.equal(decideNextTask(base, { gold: 100 }, { adventure: 0, work: 0 }, evening, []), 'adventure');
+    assert.equal(decideNextTask({ ...base, adventureEnabled: false }, { gold: 10 }, { adventure: 0, work: 0 }, evening, []), 'work');
+    assert.equal(decideNextTask({ ...base, adventureEnabled: false, workEnabled: false }, { gold: 10 }, { adventure: 0, work: 0 }, evening, []), null);
+  });
+});
+
+describe('Miku OneBot HTTP client', () => {
+  const okResponse = (data = {}) => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ status: 'ok', retcode: 0, data }),
+  });
+
+  test('retries transient network failures until success', async () => {
+    let attempts = 0;
+    const fetchImpl = async () => {
+      attempts += 1;
+      if (attempts < 3) throw new Error('fetch failed');
+      return okResponse({ delivered: true });
+    };
+    const client = new OneBotHttpClient(
+      { baseUrl: 'http://127.0.0.1:3002', maxRetries: 2, retryDelayMs: 100 },
+      fetchImpl,
+    );
+    const data = await client.call('send_packet', {});
+    assert.equal(attempts, 3);
+    assert.deepEqual(data, { delivered: true });
+  });
+
+  test('throws after exhausting network retries', async () => {
+    let attempts = 0;
+    const fetchImpl = async () => {
+      attempts += 1;
+      throw new Error('fetch failed');
+    };
+    const client = new OneBotHttpClient(
+      { baseUrl: 'http://127.0.0.1:3002', maxRetries: 2, retryDelayMs: 100 },
+      fetchImpl,
+    );
+    await assert.rejects(() => client.call('send_packet', {}), /OneBot 请求失败：fetch failed/);
+    assert.equal(attempts, 3);
+  });
+
+  test('does not retry business-level failures', async () => {
+    let attempts = 0;
+    const fetchImpl = async () => {
+      attempts += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ status: 'failed', retcode: 1, message: '暂无可执行的冒险' }),
+      };
+    };
+    const client = new OneBotHttpClient({ baseUrl: 'http://127.0.0.1:3002' }, fetchImpl);
+    await assert.rejects(() => client.call('send_packet', {}), /暂无可执行的冒险/);
+    assert.equal(attempts, 1);
   });
 });
 
