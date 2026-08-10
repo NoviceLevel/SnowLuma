@@ -15,6 +15,7 @@ import { Toolbar } from '@cloudflare/kumo/components/toolbar';
 import './styles.css';
 import {
   ArrowClockwise,
+  Backpack,
   Eye,
   EyeSlash,
   FloppyDisk,
@@ -388,36 +389,46 @@ function App() {
             </LayerCard.Primary>
           </LayerCard>
 
-          <LayerCard>
-            <SectionHeader title="当前任务" badge={<Badge variant={story.storyId ? story.finished ? 'orange' : 'green' : 'neutral'}>{story.storyId ? story.finished ? '待结算' : '进行中' : '空闲'}</Badge>} />
-            <LayerCard.Primary className="flex flex-wrap items-center justify-between gap-5">
-              <div className="flex min-w-0 items-center gap-4">
-                {story.storyId ? (() => {
-                  const item = String(story.storyId).startsWith('6100') ? selectedCourse : String(story.storyId).startsWith('6400') ? selectedJob : selectedAdventure;
-                  return item?.iconUrl ? <img src={item.iconUrl} alt="任务素材" className="size-20 shrink-0 object-contain" /> : <Sparkle size={44} className="shrink-0 text-kumo-subtle" />;
-                })() : <Sparkle size={44} className="shrink-0 text-kumo-subtle" />}
-                <div className="min-w-0">
-                  <Text as="h3" variant="heading2">{story.storyId ? storyType(story) : '暂无任务'}</Text>
-                  <Text size="sm" variant="secondary">{story.storyId ? story.finished ? '任务已完成，等待自动结算' : '自动托管正在跟踪任务进度' : '自动托管会在满足条件时开始任务'}</Text>
-                </div>
-              </div>
-              <div className="min-w-32 text-right">
-                <Text as="span" size="xs" variant="secondary">剩余时间</Text>
-                <div><Text as="span" variant="heading2">{story.storyId ? duration(storyRemaining) : '--'}</Text></div>
-                <Text as="span" size="xs" variant="secondary">{story.storyId ? `总时长 ${duration(story.durationSeconds)}` : '等待下一次任务'}</Text>
-              </div>
-            </LayerCard.Primary>
-          </LayerCard>
-
-          <section className="flex flex-col gap-3" aria-labelledby="inventory-title">
-            <Text as="h2" variant="heading3" id="inventory-title">背包</Text>
-            <Grid variant="4up" gap="sm">
-              <GridItem><MetricCard label="饼干" value={formatNumber(inventory.biscuits)} detail="库存" /></GridItem>
-              <GridItem><MetricCard label="虾仁" value={formatNumber(inventory.shrimp)} detail="库存" /></GridItem>
-              <GridItem><MetricCard label="香皂片" value={formatNumber(inventory.soap)} detail="库存" /></GridItem>
-              <GridItem><MetricCard label="沐浴球" value={formatNumber(inventory.bathBall)} detail="库存" /></GridItem>
-            </Grid>
-          </section>
+          <Grid variant="2-1" gap="sm">
+            <GridItem>
+              <LayerCard className="h-full">
+                <SectionHeader title="当前任务" badge={<Badge variant={story.storyId ? story.finished ? 'orange' : 'green' : 'neutral'}>{story.storyId ? story.finished ? '待结算' : '进行中' : '空闲'}</Badge>} />
+                <LayerCard.Primary className="flex h-full flex-wrap items-center justify-between gap-5">
+                  <div className="flex min-w-0 items-center gap-4">
+                    {story.storyId ? (() => {
+                      const item = String(story.storyId).startsWith('6100') ? selectedCourse : String(story.storyId).startsWith('6400') ? selectedJob : selectedAdventure;
+                      return item?.iconUrl ? <img src={item.iconUrl} alt="任务素材" className="size-20 shrink-0 object-contain" /> : <Sparkle size={44} className="shrink-0 text-kumo-subtle" />;
+                    })() : <Sparkle size={44} className="shrink-0 text-kumo-subtle" />}
+                    <div className="min-w-0">
+                      <Text as="h3" variant="heading2">{story.storyId ? storyType(story) : '暂无任务'}</Text>
+                      <Text size="sm" variant="secondary">{story.storyId ? story.finished ? '任务已完成，等待自动结算' : '自动托管正在跟踪任务进度' : '自动托管会在满足条件时开始任务'}</Text>
+                    </div>
+                  </div>
+                  <div className="min-w-32 text-right">
+                    <Text as="span" size="xs" variant="secondary">剩余时间</Text>
+                    <div><Text as="span" variant="heading2">{story.storyId ? duration(storyRemaining) : '--'}</Text></div>
+                    <Text as="span" size="xs" variant="secondary">{story.storyId ? `总时长 ${duration(story.durationSeconds)}` : '等待下一次任务'}</Text>
+                  </div>
+                </LayerCard.Primary>
+              </LayerCard>
+            </GridItem>
+            <GridItem>
+              <LayerCard className="h-full">
+                <SectionHeader title="背包" badge={<Badge variant="purple">4 种物品</Badge>} />
+                <LayerCard.Primary className="flex h-full items-center gap-4">
+                  <Backpack size={48} weight="duotone" className="shrink-0 text-kumo-subtle" aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <DefinitionList items={[
+                      ['饼干', formatNumber(inventory.biscuits)],
+                      ['虾仁', formatNumber(inventory.shrimp)],
+                      ['香皂片', formatNumber(inventory.soap)],
+                      ['沐浴球', formatNumber(inventory.bathBall)],
+                    ]} />
+                  </div>
+                </LayerCard.Primary>
+              </LayerCard>
+            </GridItem>
+          </Grid>
 
           <LayerCard>
             <SectionHeader title="今日进度" />
