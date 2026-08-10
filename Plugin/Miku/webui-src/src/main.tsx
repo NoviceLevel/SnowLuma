@@ -256,18 +256,31 @@ function App() {
   const toggle = (name: string, label: string) => (
     <Switch name={name} label={label} checked={Boolean(config[name])} onCheckedChange={(checked) => setField(name, checked)} />
   );
-  const select = (name: string, label: string, options: Array<[string, string]>, props: AnyRecord = {}) => (
-    <Select
-      name={name}
-      label={label}
-      value={String(config[name] ?? props.defaultValue ?? '')}
-      onValueChange={(value) => value !== null && setField(name, String(value))}
-      renderValue={(value) => options.find(([v]) => v === value)?.[1] ?? String(value)}
-      {...props}
-    >
-      {options.map(([value, text]) => <Select.Option key={value} value={value}>{text}</Select.Option>)}
-    </Select>
-  );
+  // Kumo Select treats "" as "no selection", so empty config values need a non-empty UI sentinel.
+  const select = (name: string, label: string, options: Array<[string, string]>, props: AnyRecord = {}) => {
+    const { emptyValue: emptyToken, defaultValue, ...selectProps } = props;
+    const raw = String(config[name] ?? defaultValue ?? '');
+    const uiValue = raw === '' && emptyToken ? String(emptyToken) : raw;
+    const resolved = options.some(([value]) => value === uiValue) ? uiValue : (options[0]?.[0] ?? uiValue);
+    return (
+      <Select
+        name={name}
+        label={label}
+        value={resolved}
+        onValueChange={(value) => {
+          if (value === null) return;
+          const next = String(value);
+          setField(name, emptyToken && next === String(emptyToken) ? '' : next);
+        }}
+        renderValue={(value) => options.find(([optionValue]) => optionValue === value)?.[1] ?? String(value ?? '')}
+        {...selectProps}
+      >
+        {options.map(([value, text]) => (
+          <Select.Option key={value || `${name}-empty`} value={value}>{text}</Select.Option>
+        ))}
+      </Select>
+    );
+  };
 
   const account = state.account || {};
   const values = state.values || {};
@@ -619,7 +632,12 @@ function App() {
                 </SettingSection></GridItem>
                 <GridItem><SettingSection title="冒险">
                   {toggle('adventureEnabled', '启用自动冒险')}
-                  {select('adventureOption', '冒险', [['', '服务器首个可用项'], ...catalogs.adventures.map((item) => [String(item.name), `${item.name} · ${item.duration}${item.canDo ? '' : '（不可用）'}`] as [string, string])])}
+                  {select(
+                    'adventureOption',
+                    '冒险',
+                    [['__auto__', '服务器首个可用项'], ...catalogs.adventures.map((item) => [String(item.name), `${item.name} · ${item.duration}${item.canDo ? '' : '（不可用）'}`] as [string, string])],
+                    { emptyValue: '__auto__', description: '留空/首选时自动选择服务器第一个可用冒险' },
+                  )}
                   {input('adventureStartTime', '开始时间', 'time')}
                   {input('adventureEndTime', '结束时间', 'time', { description: '支持跨零点，例如 22:00–02:00' })}
                   {input('adventureTimesPerDay', '每日冒险次数', 'number', { min: 0, description: '0 不限' })}
