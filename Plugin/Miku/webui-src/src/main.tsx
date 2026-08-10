@@ -389,21 +389,23 @@ function App() {
           </LayerCard>
 
           <LayerCard>
-            <SectionHeader title="当前任务" />
-            <LayerCard.Primary>
-              <Grid variant="1-2" gap="sm">
-                <GridItem className="flex items-center justify-center">
-                  {story.storyId ? (() => {
-                    const item = String(story.storyId).startsWith('6100') ? selectedCourse : String(story.storyId).startsWith('6400') ? selectedJob : selectedAdventure;
-                    return item?.iconUrl ? <img src={item.iconUrl} alt="任务素材" className="size-20 object-contain" /> : <Sparkle size={44} className="text-kumo-subtle" />;
-                  })() : <Sparkle size={44} className="text-kumo-subtle" />}
-                </GridItem>
-                <GridItem><DefinitionList items={[
-                  ['任务状态', story.storyId ? story.finished ? `${storyType(story)}（待结算）` : storyType(story) : '空闲'],
-                  ['Story ID', story.storyId || '无'],
-                  ['剩余 / 总时长', story.storyId ? `${duration(storyRemaining)} / ${duration(story.durationSeconds)}` : '--'],
-                ]} /></GridItem>
-              </Grid>
+            <SectionHeader title="当前任务" badge={<Badge variant={story.storyId ? story.finished ? 'orange' : 'green' : 'neutral'}>{story.storyId ? story.finished ? '待结算' : '进行中' : '空闲'}</Badge>} />
+            <LayerCard.Primary className="flex flex-wrap items-center justify-between gap-5">
+              <div className="flex min-w-0 items-center gap-4">
+                {story.storyId ? (() => {
+                  const item = String(story.storyId).startsWith('6100') ? selectedCourse : String(story.storyId).startsWith('6400') ? selectedJob : selectedAdventure;
+                  return item?.iconUrl ? <img src={item.iconUrl} alt="任务素材" className="size-20 shrink-0 object-contain" /> : <Sparkle size={44} className="shrink-0 text-kumo-subtle" />;
+                })() : <Sparkle size={44} className="shrink-0 text-kumo-subtle" />}
+                <div className="min-w-0">
+                  <Text as="h3" variant="heading2">{story.storyId ? storyType(story) : '暂无任务'}</Text>
+                  <Text size="sm" variant="secondary">{story.storyId ? story.finished ? '任务已完成，等待自动结算' : '自动托管正在跟踪任务进度' : '自动托管会在满足条件时开始任务'}</Text>
+                </div>
+              </div>
+              <div className="min-w-32 text-right">
+                <Text as="span" size="xs" variant="secondary">剩余时间</Text>
+                <div><Text as="span" variant="heading2">{story.storyId ? duration(storyRemaining) : '--'}</Text></div>
+                <Text as="span" size="xs" variant="secondary">{story.storyId ? `总时长 ${duration(story.durationSeconds)}` : '等待下一次任务'}</Text>
+              </div>
             </LayerCard.Primary>
           </LayerCard>
 
