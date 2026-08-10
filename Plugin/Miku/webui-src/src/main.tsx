@@ -134,7 +134,7 @@ function MetricCard({
         {(badge || icon) ? <div className="shrink-0">{badge || icon}</div> : null}
       </div>
       <div className="flex min-w-0 flex-1 items-center">
-        <span className="block break-words font-heading text-3xl font-semibold leading-none tracking-tight text-kumo-default tabular-nums">
+        <span className="block break-words font-heading text-[15px] font-semibold leading-none tracking-tight text-kumo-default tabular-nums">
           {value}
         </span>
       </div>
