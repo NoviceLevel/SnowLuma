@@ -448,28 +448,37 @@ function App() {
             </GridItem>
           </Grid>
 
-          <LayerCard>
-            <SectionHeader title="今日进度" />
-            <LayerCard.Primary className="flex flex-wrap gap-2">
-              {([['school', '学习'], ['work', '打工'], ['adventure', '冒险'], ['feed', '喂食'], ['wash', '洗澡'], ['visitFriend', '好友走访'], ['visitStranger', '陌生人走访'], ['careOther', '照顾别人']] as const).map(([key, label]) => <Badge key={key} variant="neutral">{label} {progress.counts?.[key] || 0}</Badge>)}
-              <Badge variant="purple">今日经验 {progress.dailyExperienceGain || 0}</Badge>
-            </LayerCard.Primary>
-          </LayerCard>
-
-          {(pending || telemetrySummary.length) ? <LayerCard>
-            <SectionHeader title="成长遥测" description="相同任务与收益已合并；次数为全部结算记录的汇总" badge={<Badge variant="purple">{pending ? `${telemetry.length} 次结算 · 当前任务进行中` : `${telemetry.length} 次结算 · 属性增量 ${formatNumber(totalGain, 1)}`}</Badge>} />
-            <LayerCard.Primary className="flex flex-wrap gap-2">
-              {pending ? <Badge variant="blue">
-                <span title={`${pending.item?.name || '当前任务'} · 已进行 ${duration(Math.max(0, Math.round((now - Date.parse(pending.startedAt || pending.createdAt || new Date().toISOString())) / 1000)))}`}>进行中 · {pending.item?.name || ({ school: '学习', work: '打工', adventure: '冒险' } as AnyRecord)[pending.kind] || '任务'}{pending.attribute ? ` · ${attributeNames[pending.attribute] || pending.attribute}` : ''}</span>
-              </Badge> : null}
-              {telemetrySummary.map((item) => <Badge
-                key={`${item.kind}-${item.name}-${item.reward}`}
-                variant={item.kind === 'school' ? 'blue' : item.kind === 'work' ? 'green' : item.kind === 'adventure' ? 'orange' : 'neutral'}
-              >
-                <span title={`${item.name} · ${item.reward} · ${item.count} 次 · 累计耗时 ${duration(item.elapsedSeconds)}`}>{item.name} · {item.reward} · {item.count} 次</span>
-              </Badge>)}
-            </LayerCard.Primary>
-          </LayerCard> : null}
+          <Grid variant="1-2" gap="sm">
+            <GridItem>
+              <LayerCard className="h-full">
+                <SectionHeader title="今日进度" />
+                <LayerCard.Primary>
+                  <div className="flex flex-wrap gap-2">
+                    {([['school', '学习'], ['work', '打工'], ['adventure', '冒险'], ['feed', '喂食'], ['wash', '洗澡'], ['visitFriend', '好友走访'], ['visitStranger', '陌生人走访'], ['careOther', '照顾别人']] as const).map(([key, label]) => <Badge key={key} variant="neutral">{label} {progress.counts?.[key] || 0}</Badge>)}
+                    <Badge variant="purple">今日经验 {progress.dailyExperienceGain || 0}</Badge>
+                  </div>
+                </LayerCard.Primary>
+              </LayerCard>
+            </GridItem>
+            {(pending || telemetrySummary.length) ? <GridItem>
+              <LayerCard className="h-full">
+                <SectionHeader title="成长遥测" description="相同任务与收益已合并；次数为全部结算记录的汇总" badge={<Badge variant="purple">{pending ? `${telemetry.length} 次结算 · 当前任务进行中` : `${telemetry.length} 次结算 · 属性增量 ${formatNumber(totalGain, 1)}`}</Badge>} />
+                <LayerCard.Primary>
+                  <div className="flex flex-wrap gap-2">
+                    {pending ? <Badge variant="blue">
+                      <span title={`${pending.item?.name || '当前任务'} · 已进行 ${duration(Math.max(0, Math.round((now - Date.parse(pending.startedAt || pending.createdAt || new Date().toISOString())) / 1000)))}`}>进行中 · {pending.item?.name || ({ school: '学习', work: '打工', adventure: '冒险' } as AnyRecord)[pending.kind] || '任务'}{pending.attribute ? ` · ${attributeNames[pending.attribute] || pending.attribute}` : ''}</span>
+                    </Badge> : null}
+                    {telemetrySummary.map((item) => <Badge
+                      key={`${item.kind}-${item.name}-${item.reward}`}
+                      variant={item.kind === 'school' ? 'blue' : item.kind === 'work' ? 'green' : item.kind === 'adventure' ? 'orange' : 'neutral'}
+                    >
+                      <span title={`${item.name} · ${item.reward} · ${item.count} 次 · 累计耗时 ${duration(item.elapsedSeconds)}`}>{item.name} · {item.reward} · {item.count} 次</span>
+                    </Badge>)}
+                  </div>
+                </LayerCard.Primary>
+              </LayerCard>
+            </GridItem> : null}
+          </Grid>
           </div>
 
           <div className="flex flex-col gap-4" hidden={activeView !== 'activity'}>
