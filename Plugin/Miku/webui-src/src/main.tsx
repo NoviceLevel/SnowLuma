@@ -9,6 +9,7 @@ import { Surface } from '@cloudflare/kumo/components/surface';
 import { Switch } from '@cloudflare/kumo/components/switch';
 import { Table } from '@cloudflare/kumo/components/table';
 import { Text } from '@cloudflare/kumo/components/text';
+import { Tabs } from '@cloudflare/kumo/components/tabs';
 import { Toasty, createKumoToastManager } from '@cloudflare/kumo/components/toast';
 import { Toolbar } from '@cloudflare/kumo/components/toolbar';
 import './styles.css';
@@ -163,6 +164,7 @@ function App() {
   const [catalogs, setCatalogs] = useState<Catalogs>(emptyCatalogs);
   const [dirty, setDirty] = useState(false);
   const [accountVisible, setAccountVisible] = useState(false);
+  const [activeView, setActiveView] = useState('overview');
   const [now, setNow] = useState(Date.now());
   const configRef = useRef(config);
 
@@ -327,7 +329,18 @@ function App() {
           </LayerCard.Primary>
         </LayerCard>
 
-        <section className="flex flex-col gap-3" aria-label="宠物状态">
+        <Tabs
+          variant="underline"
+          value={activeView}
+          onValueChange={setActiveView}
+          tabs={[
+            { value: 'overview', label: '概览' },
+            { value: 'settings', label: '托管设置' },
+            { value: 'activity', label: '记录' },
+          ]}
+        />
+
+        <section className="flex flex-col gap-3" aria-label="宠物状态" hidden={activeView !== 'overview'}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Text as="h2" variant="heading3">当前状态</Text>
             <Text size="xs" variant="secondary">同步数值</Text>
@@ -357,6 +370,7 @@ function App() {
         </section>
 
         <section className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4" hidden={activeView !== 'overview'}>
           <LayerCard>
             <SectionHeader title="自动托管" description="按当前设置自动照顾宠物并执行任务" badge={<Badge variant={automationRunning ? 'green' : 'neutral'}>{automationRunning ? '运行中' : '已停止'}</Badge>} />
             <LayerCard.Primary>
@@ -419,7 +433,9 @@ function App() {
               </Table.Body>
             </Table>
           </LayerCard> : null}
+          </div>
 
+          <div className="flex flex-col gap-4" hidden={activeView !== 'activity'}>
           {profile.medals?.length ? <LayerCard>
             <SectionHeader title="我的徽章" description="全部徽章、获得状态与佩戴状态" badge={<Badge variant="purple">{profile.medals.filter((item: AnyRecord) => item.acquired).length}/{profile.medals.length} 枚</Badge>} />
             <LayerCard.Primary className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -457,8 +473,9 @@ function App() {
               </Table.Row>)}</Table.Body>
             </Table>
           </LayerCard> : null}
+          </div>
 
-          <section className="flex flex-col gap-3" aria-labelledby="settings-title">
+          <section className="flex flex-col gap-3" aria-labelledby="settings-title" hidden={activeView !== 'settings'}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <Text as="h2" variant="heading2" id="settings-title">托管设置</Text>
@@ -529,10 +546,12 @@ function App() {
             </form>
           </section>
 
+          <div className="flex flex-col gap-4" hidden={activeView !== 'activity'}>
           <LayerCard>
             <SectionHeader title="运行日志" />
             <LayerCard.Primary><pre className="m-0 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-kumo-inverse p-4 font-mono text-xs text-kumo-inverse">{compactLogs(state.logs || []).join('\n') || '尚无日志'}</pre></LayerCard.Primary>
           </LayerCard>
+          </div>
         </section>
       </main>
     </Toasty>
