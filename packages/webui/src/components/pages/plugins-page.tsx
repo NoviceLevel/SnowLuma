@@ -111,21 +111,21 @@ export function PluginsPage() {
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[860px] table-fixed text-sm">
-              <thead className="bg-muted/45 text-left text-xs text-muted-foreground"><tr><th className="w-[29%] px-5 py-3">插件</th><th className="w-[12%] px-4 py-3">状态</th><th className="w-[11%] px-4 py-3">启用</th><th className="w-[10%] px-4 py-3">版本</th><th className="w-[13%] px-4 py-3">WebUI</th><th className="w-[9%] px-4 py-3">PID</th><th className="w-[16%] px-5 py-3 text-center">操作</th></tr></thead>
+              <thead className="bg-muted/45 text-left text-xs text-muted-foreground"><tr><th className="w-[29%] px-5 py-3">插件</th><th className="w-[12%] px-4 py-3 text-center">状态</th><th className="w-[11%] px-4 py-3 text-center">启用</th><th className="w-[10%] px-4 py-3">版本</th><th className="w-[13%] px-4 py-3">WebUI</th><th className="w-[9%] px-4 py-3">PID</th><th className="w-[16%] px-5 py-3 text-center">操作</th></tr></thead>
               <tbody>
                 {loading && plugins.length === 0 ? <tr><td colSpan={7} className="h-36 text-center text-muted-foreground"><Loader2 className="mx-auto mb-2 animate-spin" />正在加载</td></tr>
                   : plugins.length === 0 ? <tr><td colSpan={7} className="h-36 text-center text-muted-foreground">Plugin 目录中没有可用插件</td></tr>
                     : plugins.map((plugin) => (
                       <tr key={plugin.id} className="border-t border-border/60 transition-colors hover:bg-muted/25">
-                        <td className="px-5 py-4"><div className="truncate font-medium">{plugin.name}</div><div className="mt-1 truncate text-xs text-muted-foreground">{plugin.description || `${plugin.folderName} · ${plugin.protocol || '本地组件'}`}</div></td>
-                        <td className="px-4 py-4"><Badge variant={plugin.enabled ? statusVariant(plugin.state) : 'secondary'} title={plugin.lastError ?? undefined}>{plugin.enabled ? labels[plugin.state] : '已禁用'}</Badge></td>
-                        <td className="px-4 py-4"><ToggleSwitch value={plugin.enabled} onChange={(value) => void setEnabled(plugin, value)} disabled={busy !== null} ariaLabel={`${plugin.name}${plugin.enabled ? '禁用' : '启用'}`} /></td>
-                        <td className="px-4 py-4 font-mono text-xs text-muted-foreground">{plugin.version}</td>
-                        <td className="px-4 py-4">
-                          {plugin.instances.length > 0 ? <div className="flex flex-wrap gap-1.5">{plugin.instances.map((instance) => <Button key={instance.webUrl} asChild variant="outline" size="sm"><a href={instance.webUrl} target="_blank" rel="noreferrer"><ExternalLink />{instance.uin ? `${instance.uin} :${instance.webPort}` : `:${instance.webPort}`}</a></Button>)}</div> : <span className="text-muted-foreground">--</span>}
+                        <td className="px-5 py-4 align-middle"><div className="truncate font-medium">{plugin.name}</div><div className="mt-1 truncate text-xs text-muted-foreground">{plugin.description || `${plugin.folderName} · ${plugin.protocol || '本地组件'}`}</div></td>
+                        <td className="px-4 py-4 text-center align-middle"><Badge variant={plugin.enabled ? statusVariant(plugin.state) : 'secondary'} title={plugin.lastError ?? undefined}>{plugin.enabled ? labels[plugin.state] : '已禁用'}</Badge></td>
+                        <td className="px-4 py-4 text-center align-middle"><ToggleSwitch value={plugin.enabled} onChange={(value) => void setEnabled(plugin, value)} disabled={busy !== null} ariaLabel={`${plugin.name}${plugin.enabled ? '禁用' : '启用'}`} /></td>
+                        <td className="px-4 py-4 align-middle font-mono text-xs text-muted-foreground">{plugin.version}</td>
+                        <td className="px-4 py-4 align-middle">
+                          {plugin.instances.length > 0 ? <div className="flex flex-col gap-0.5">{plugin.instances.map((instance) => <a key={instance.webUrl} href={instance.webUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground hover:underline"><ExternalLink className="size-3 shrink-0" />{instance.uin ? `${instance.uin} :${instance.webPort}` : `:${instance.webPort}`}</a>)}</div> : <span className="text-muted-foreground">--</span>}
                         </td>
-                        <td className="px-4 py-4 font-mono text-xs text-muted-foreground">{plugin.pid ?? (plugin.state === 'external' ? '外部' : '--')}</td>
-                        <td className="px-5 py-4 text-center">
+                        <td className="px-4 py-4 align-middle font-mono text-xs text-muted-foreground">{plugin.pid ?? (plugin.state === 'external' ? '外部' : '--')}</td>
+                        <td className="px-5 py-4 align-middle text-center">
                           {!plugin.enabled ? <Badge variant="secondary">已禁用</Badge>
                             : !plugin.running ? <Button size="sm" onClick={() => void run(plugin, 'start')} disabled={busy !== null}>{busy === `${plugin.id}:start` ? <Loader2 className="animate-spin" /> : <Play />}启动</Button>
                               : plugin.managed ? <div className="inline-flex gap-2"><Button variant="outline" size="sm" onClick={() => void run(plugin, 'restart')} disabled={busy !== null}><RotateCw />重启</Button><Button variant="destructive" size="sm" onClick={() => void run(plugin, 'stop')} disabled={busy !== null}><Square />停止</Button></div>
