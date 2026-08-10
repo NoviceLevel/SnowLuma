@@ -126,7 +126,7 @@ function MetricCard({
   detailTone?: 'secondary' | 'success' | 'error';
 }) {
   return (
-    <LayerCard className="flex h-full min-h-[7.25rem] min-w-0 flex-col justify-between gap-2 p-3 sm:p-4">
+    <LayerCard className="flex h-full min-h-24 min-w-0 flex-col justify-between gap-2 p-3 sm:p-4">
       <div className="flex min-h-5 min-w-0 items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
           <Text size="xs" variant="secondary" truncate>{label}</Text>
@@ -134,8 +134,7 @@ function MetricCard({
         {(badge || icon) ? <div className="shrink-0">{badge || icon}</div> : null}
       </div>
       <div className="flex min-w-0 flex-1 items-center">
-        {/* Middle size: larger than heading2, smaller than the previous text-5xl experiment. */}
-        <span className="block break-words font-heading text-[1.75rem] font-semibold leading-none tracking-tight text-kumo-default tabular-nums sm:text-4xl">
+        <span className="block break-words font-heading text-3xl font-semibold leading-none tracking-tight text-kumo-default tabular-nums">
           {value}
         </span>
       </div>
