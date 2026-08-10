@@ -167,7 +167,7 @@ function App() {
   const [catalogs, setCatalogs] = useState<Catalogs>(emptyCatalogs);
   const [dirty, setDirty] = useState(false);
   const [accountVisible, setAccountVisible] = useState(false);
-  const [activeView, setActiveView] = useState('overview');
+  const [activeView, setActiveView] = useState(() => ['overview', 'settings', 'activity'].includes(window.localStorage.getItem('miku:active-view') || '') ? window.localStorage.getItem('miku:active-view') as string : 'overview');
   const [now, setNow] = useState(Date.now());
   const configRef = useRef(config);
 
@@ -234,6 +234,7 @@ function App() {
       label={label}
       value={String(config[name] ?? props.defaultValue ?? '')}
       onValueChange={(value) => value !== null && setField(name, String(value))}
+      renderValue={(value) => options.find(([v]) => v === value)?.[1] ?? String(value)}
       {...props}
     >
       {options.map(([value, text]) => <Select.Option key={value} value={value}>{text}</Select.Option>)}
@@ -352,7 +353,7 @@ function App() {
         <Tabs
           variant="underline"
           value={activeView}
-          onValueChange={setActiveView}
+          onValueChange={(value) => { setActiveView(value); window.localStorage.setItem('miku:active-view', value); }}
           tabs={[
             { value: 'overview', label: '概览' },
             { value: 'settings', label: '托管设置' },
@@ -483,6 +484,21 @@ function App() {
           </div>
 
           <div className="flex flex-col gap-4" hidden={activeView !== 'activity'}>
+          <LayerCard className="overflow-x-auto p-0">
+            <SectionHeader title="结算记录" description="最近 30 次任务结算的属性增量明细" badge={<Badge variant="purple">{telemetry.length} 条 · 属性增量 {formatNumber(totalGain, 1)}</Badge>} />
+            {telemetry.length ? <Table layout="fixed">
+              <colgroup><col className="w-[18%]" /><col className="w-[12%]" /><col className="w-[32%]" /><col className="w-[24%]" /><col className="w-[14%]" /></colgroup>
+              <Table.Header variant="compact"><Table.Row><Table.Head>结算时间</Table.Head><Table.Head>类型</Table.Head><Table.Head>任务</Table.Head><Table.Head>属性增量</Table.Head><Table.Head>耗时</Table.Head></Table.Row></Table.Header>
+              <Table.Body>{telemetry.map((item: AnyRecord, index: number) => <Table.Row key={`${item.storyId || item.settledAt}-${index}`}>
+                <Table.Cell><Text size="xs" variant="secondary">{item.settledAt ? new Date(item.settledAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '--'}</Text></Table.Cell>
+                <Table.Cell><Badge variant={item.kind === 'school' ? 'blue' : item.kind === 'work' ? 'green' : item.kind === 'adventure' ? 'orange' : 'neutral'}>{({ school: '学习', work: '打工', adventure: '冒险' } as AnyRecord)[item.kind] || '任务'}</Badge></Table.Cell>
+                <Table.Cell><Text size="sm">{item.item?.name || '--'}{item.attribute ? <Text size="xs" variant="secondary"> · {attributeNames[item.attribute] || item.attribute}</Text> : null}</Text></Table.Cell>
+                <Table.Cell><Text size="sm">{telemetryReward(item)}</Text></Table.Cell>
+                <Table.Cell><Text size="xs" variant="secondary">{duration(item.elapsedSeconds)}</Text></Table.Cell>
+              </Table.Row>)}</Table.Body>
+            </Table> : <LayerCard.Primary><Text variant="secondary">尚无结算记录</Text></LayerCard.Primary>}
+          </LayerCard>
+
           {profile.medals?.length ? <LayerCard>
             <SectionHeader title="我的徽章" description="全部徽章、获得状态与佩戴状态" badge={<Badge variant="purple">{profile.medals.filter((item: AnyRecord) => item.acquired).length}/{profile.medals.length} 枚</Badge>} />
             <LayerCard.Primary>
@@ -522,6 +538,11 @@ function App() {
               </Table.Row>)}</Table.Body>
             </Table>
           </LayerCard> : null}
+
+          <LayerCard>
+            <SectionHeader title="运行日志" description="托管循环的最近运行输出" />
+            <LayerCard.Primary><pre className="m-0 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-kumo-inverse p-4 font-mono text-xs text-kumo-inverse">{compactLogs(state.logs || []).join('\n') || '尚无日志'}</pre></LayerCard.Primary>
+          </LayerCard>
           </div>
 
           <section className="flex flex-col gap-3" aria-labelledby="settings-title" hidden={activeView !== 'settings'}>
@@ -534,40 +555,55 @@ function App() {
             </div>
             <form id="settings" onSubmit={(event) => event.preventDefault()}>
               <Grid variant="2up" gap="sm">
-                <GridItem><SettingSection title="培训策略">
-                  {select('schoolSelectionMode', '属性策略', [['lowest', '动态补最低属性'], ['rotation', '轮换三项属性'], ['fixed', '固定属性']])}
-                  <div className="flex items-end"><Badge variant="purple">当前学习属性：{attributeNames[activeAttribute] || '--'}（{modeLabel}）</Badge></div>
-                  <div data-miku-wide><Text size="xs" variant="secondary">动态模式会根据当前力量、智力和魅力的差距选择下一项课程。</Text></div>
-                </SettingSection></GridItem>
-                <GridItem><SettingSection title="安全与轮询">
-                  {toggle('safeMode', '安全模式（只读）')}
-                  {toggle('autoStart', '启动时自动托管')}
-                  {input('petId', 'Pet ID', 'text', { placeholder: 'AUTO 表示自动获取' })}
-                  {input('intervalSeconds', '页面与后端刷新秒数', 'number', { min: 3, max: 300, description: '页面轮询与后端检查使用同一周期' })}
-                  {input('coinThreshold', '学习金币阈值', 'number', { min: 0 })}
+                <GridItem><SettingSection title="任务策略">
                   {select('taskPriority', '任务优先顺序', [['school', '优先学习'], ['work', '优先打工'], ['smart', '智能择优']], { description: '智能择优自动对比学习/打工收益选最优' })}
-                  {select('fatigue8HourAction', '超过 8 小时后', [['rest', '休息'], ['work', '打工'], ['school', '学习'], ['adventure', '冒险']])}
-                  {select('fatigue12HourAction', '超过 12 小时后', [['rest', '休息'], ['work', '打工'], ['school', '学习'], ['adventure', '冒险']])}
-                  {input('verifyDelaySeconds', '写后验证等待秒数', 'number', { min: 0, max: 30, description: '喂食/洗澡/结算后复查属性前的等待' })}
-                  {input('failureCooldownSeconds', '失败冷却秒数', 'number', { min: 0, description: '照料失败后的封锁时长' })}
-                  {input('settleRetrySeconds', '结算重试间隔秒数', 'number', { min: 1 })}
-                  {input('startConfirmSeconds', '任务失踪确认窗口秒数', 'number', { min: 5, description: '本地已开工但服务器暂未返回任务时的等待' })}
+                  {select('schoolSelectionMode', '学习属性策略', [['lowest', '动态补最低属性'], ['rotation', '轮换三项属性'], ['fixed', '固定属性']])}
+                  {input('coinThreshold', '学习金币阈值', 'number', { min: 0, description: '金币低于该值时优先选免费课程' })}
+                  {select('fatigue8HourAction', '在线超过 8 小时后', [['rest', '休息'], ['work', '打工'], ['school', '学习'], ['adventure', '冒险']], { description: '疲劳后任务收益下降，可选择休息' })}
+                  {select('fatigue12HourAction', '在线超过 12 小时后', [['rest', '休息'], ['work', '打工'], ['school', '学习'], ['adventure', '冒险']])}
+                  <div data-miku-wide><Badge variant="purple">当前学习属性：{attributeNames[activeAttribute] || '--'}（{modeLabel}）</Badge></div>
+                </SettingSection></GridItem>
+                <GridItem><SettingSection title="学习">
+                  {toggle('schoolEnabled', '启用自动学习')}
+                  {select('schoolAttribute', '基准属性', [['physical', '力量'], ['culture', '智力'], ['art', '魅力']], { description: '固定模式直接学习该属性；轮换模式以此为起点；动态模式忽略' })}
+                  {select('courseSubEvent', '课程', [['0', '自动最高效率'], ...catalogs.courses.map((item) => [String(item.subEventType), `${[item.name, item.duration, item.reward].filter(Boolean).join(' · ')}${item.canDo ? '' : '（不可用）'}`] as [string, string])], { description: '仅“固定属性”策略生效，其余策略自动选最高效率课程' })}
+                  {toggle('schoolRotationEnabled', '启用周期轮换')}
+                  {input('schoolRotationEvery', '每完成几次轮换', 'number', { min: 1, description: '仅“轮换三项属性”策略生效' })}
+                  <CatalogPreview item={selectedCourse} fallback="自动选择课程" />
+                </SettingSection></GridItem>
+                <GridItem><SettingSection title="打工">
+                  {toggle('workEnabled', '启用自动打工')}
+                  {input('workCareerType', '职业编号', 'number', { min: 0, description: '0 表示自动选择开放职业' })}
+                  {select('workJobSubEvent', '岗位', [['0', '自动最高效率'], ...jobs.map((item) => [String(item.subEventType), `${[item.careerName, item.name, item.duration, item.reward].filter(Boolean).join(' · ')}${item.canDo ? '' : '（不可用）'}`] as [string, string])])}
+                  <CatalogPreview item={selectedJob} fallback="自动选择岗位" />
+                  {input('workTimesPerDay', '每日打工次数', 'number', { min: 0, description: '0 不限' })}
+                  {toggle('employFriend', '自动雇佣好友宠物')}
+                  {input('workFriendScanLimit', '雇佣候选扫描数', 'number', { min: 1, max: 200 })}
+                </SettingSection></GridItem>
+                <GridItem><SettingSection title="冒险">
+                  {toggle('adventureEnabled', '启用自动冒险')}
+                  {select('adventureOption', '冒险', [['', '服务器首个可用项'], ...catalogs.adventures.map((item) => [String(item.name), `${item.name} · ${item.duration}${item.canDo ? '' : '（不可用）'}`] as [string, string])])}
+                  {input('adventureStartTime', '开始时间', 'time')}
+                  {input('adventureEndTime', '结束时间', 'time', { description: '支持跨零点，例如 22:00–02:00' })}
+                  {input('adventureTimesPerDay', '每日冒险次数', 'number', { min: 0, description: '0 不限' })}
                 </SettingSection></GridItem>
                 <GridItem><SettingSection title="自动照顾">
                   {toggle('careEnabled', '启用自动照顾')}
                   {toggle('autoBuySupplies', '自动购买用品')}
-                  {input('hungerThreshold', '喂食阈值', 'number', { min: 0 })}
-                  {input('cleanThreshold', '洗澡阈值', 'number', { min: 0 })}
-                  {input('foodPurchaseCount', '购买饼干数', 'number', { min: 1 })}
-                  {input('bathPurchaseCount', '购买沐浴球数', 'number', { min: 1 })}
+                  {input('hungerThreshold', '喂食阈值', 'number', { min: 0, description: '体力低于该值时自动喂食' })}
+                  {input('cleanThreshold', '洗澡阈值', 'number', { min: 0, description: '清洁低于该值时自动洗澡' })}
+                  {input('foodPurchaseCount', '购买饼干数', 'number', { min: 1, description: '库存不足时自动补货' })}
+                  {input('bathPurchaseCount', '购买沐浴球数', 'number', { min: 1, description: '库存不足时自动补货' })}
                 </SettingSection></GridItem>
-                <GridItem><SettingSection title="学习">
-                  {toggle('schoolEnabled', '启用自动学习')}
-                  {select('schoolAttribute', '属性', [['physical', '力量'], ['culture', '智力'], ['art', '魅力']])}
-                  {toggle('schoolRotationEnabled', '轮换模式启用周期轮换')}
-                  {input('schoolRotationEvery', '每完成几次轮换', 'number', { min: 1 })}
-                  {select('courseSubEvent', '课程', [['0', '自动最高效率'], ...catalogs.courses.map((item) => [String(item.subEventType), `${[item.name, item.duration, item.reward].filter(Boolean).join(' · ')}${item.canDo ? '' : '（不可用）'}`] as [string, string])])}
-                  <CatalogPreview item={selectedCourse} fallback="自动选择课程" />
+                <GridItem><SettingSection title="运行与安全">
+                  {toggle('safeMode', '安全模式（只读）')}
+                  {toggle('autoStart', '启动时自动托管')}
+                  {input('petId', 'Pet ID', 'text', { placeholder: 'AUTO 表示自动获取' })}
+                  {input('intervalSeconds', '页面与后端刷新秒数', 'number', { min: 3, max: 300, description: '页面轮询与后端检查使用同一周期' })}
+                  {input('verifyDelaySeconds', '写后验证等待秒数', 'number', { min: 0, max: 30, description: '喂食/洗澡/结算后复查属性前的等待' })}
+                  {input('failureCooldownSeconds', '失败冷却秒数', 'number', { min: 0, description: '照料失败后的封锁时长' })}
+                  {input('settleRetrySeconds', '结算重试间隔秒数', 'number', { min: 1 })}
+                  {input('startConfirmSeconds', '任务失踪确认窗口秒数', 'number', { min: 5, description: '本地已开工但服务器暂未返回任务时的等待' })}
                 </SettingSection></GridItem>
                 <GridItem className="md:col-span-2"><SettingSection title="走访与照顾别人">
                   {toggle('visitEnabled', '启用自动走访')}
@@ -577,36 +613,13 @@ function App() {
                   {input('visitMaxPerDay', '主动走访人数上限/日', 'number', { min: 0, description: '0 不限' })}
                   {input('visitDelayMinMinutes', '走访等待最短分钟', 'number', { min: 0 })}
                   {input('visitDelayMaxMinutes', '走访等待最长分钟', 'number', { min: 0 })}
-                  {input('otherCareDailyExperienceLimit', '停止照顾的每日经验值', 'number', { min: 0 })}
+                  {input('otherCareDailyExperienceLimit', '停止照顾的每日经验值', 'number', { min: 0, description: '0 表示不限制' })}
                   {input('visitCandidateScanLimit', '候选扫描数', 'number', { min: 1, max: 200 })}
                   {input('visitStrangerGroupIds', '陌生人群号', 'text', { placeholder: '留空自动选群' })}
-                </SettingSection></GridItem>
-                <GridItem><SettingSection title="打工">
-                  {toggle('workEnabled', '启用自动打工')}
-                  {input('workCareerType', '职业编号', 'number', { min: 0, description: '0 表示自动选择开放职业' })}
-                  {select('workJobSubEvent', '岗位', [['0', '自动最高效率'], ...jobs.map((item) => [String(item.subEventType), `${[item.careerName, item.name, item.duration, item.reward].filter(Boolean).join(' · ')}${item.canDo ? '' : '（不可用）'}`] as [string, string])])}
-                  <CatalogPreview item={selectedJob} fallback="自动选择岗位" />
-                  {input('workTimesPerDay', '每日打工次数', 'number', { min: 0 })}
-                  {toggle('employFriend', '自动雇佣好友宠物')}
-                  {input('workFriendScanLimit', '雇佣候选扫描数', 'number', { min: 1, max: 200 })}
-                </SettingSection></GridItem>
-                <GridItem><SettingSection title="冒险">
-                  {toggle('adventureEnabled', '启用自动冒险')}
-                  {select('adventureOption', '冒险', [['', '服务器首个可用项'], ...catalogs.adventures.map((item) => [String(item.name), `${item.name} · ${item.duration}${item.canDo ? '' : '（不可用）'}`] as [string, string])])}
-                  {input('adventureStartTime', '开始时间', 'time')}
-                  {input('adventureEndTime', '结束时间', 'time', { description: '支持跨零点，例如 22:00–02:00' })}
-                  {input('adventureTimesPerDay', '每日冒险次数', 'number', { min: 0 })}
                 </SettingSection></GridItem>
               </Grid>
             </form>
           </section>
-
-          <div className="flex flex-col gap-4" hidden={activeView !== 'activity'}>
-          <LayerCard>
-            <SectionHeader title="运行日志" />
-            <LayerCard.Primary><pre className="m-0 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-kumo-inverse p-4 font-mono text-xs text-kumo-inverse">{compactLogs(state.logs || []).join('\n') || '尚无日志'}</pre></LayerCard.Primary>
-          </LayerCard>
-          </div>
         </section>
       </main>
     </Toasty>
