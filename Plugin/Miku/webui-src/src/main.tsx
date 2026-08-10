@@ -587,10 +587,7 @@ function App() {
 
           <section className="flex flex-col gap-3" aria-labelledby="settings-title" hidden={activeView !== 'settings'}>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <Text as="h2" variant="heading2" id="settings-title">托管设置</Text>
-                <Text size="sm" variant="secondary">配置保存在 Miku 独立组件中</Text>
-              </div>
+              <Text as="h2" variant="heading2" id="settings-title">托管设置</Text>
               <Button id="save" variant="primary" icon={<FloppyDisk />}>{dirty ? '保存设置（未保存）' : '保存设置'}</Button>
             </div>
             <form id="settings" onSubmit={(event) => event.preventDefault()}>
