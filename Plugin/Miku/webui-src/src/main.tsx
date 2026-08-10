@@ -7,8 +7,10 @@ import { LayerCard } from '@cloudflare/kumo/components/layer-card';
 import { Select } from '@cloudflare/kumo/components/select';
 import { Surface } from '@cloudflare/kumo/components/surface';
 import { Switch } from '@cloudflare/kumo/components/switch';
+import { Table } from '@cloudflare/kumo/components/table';
 import { Text } from '@cloudflare/kumo/components/text';
 import { Toasty, createKumoToastManager } from '@cloudflare/kumo/components/toast';
+import { Toolbar } from '@cloudflare/kumo/components/toolbar';
 import './styles.css';
 import {
   ArrowClockwise,
@@ -21,7 +23,7 @@ import {
   Sparkle,
   X,
 } from '@phosphor-icons/react';
-import { StrictMode, useEffect, useMemo, useRef, useState } from 'react';
+import { Children, StrictMode, isValidElement, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 type AnyRecord = Record<string, any>;
@@ -128,24 +130,30 @@ function DefinitionList({ items }: { items: Array<[string, React.ReactNode]> }) 
 
 function CatalogPreview({ item, fallback }: { item?: CatalogOption; fallback: string }) {
   return (
-    <Surface className="col-span-full rounded-lg p-3">
-      <div className="flex items-center gap-3">
-        {item?.iconUrl ? <img src={item.iconUrl} alt="" width="42" height="42" className="size-10 object-contain" /> : <Sparkle size={36} className="text-kumo-subtle" />}
-        <div className="min-w-0">
-          <div className="truncate"><Text bold>{item?.name || fallback}</Text></div>
-          <div className="truncate"><Text size="xs" variant="secondary">{item ? [item.careerName, item.duration, item.reward].filter(Boolean).join(' · ') : '等待目录同步'}</Text></div>
-        </div>
+    <div data-miku-wide className="flex items-center gap-3">
+      {item?.iconUrl ? <img src={item.iconUrl} alt="" width="42" height="42" className="size-10 object-contain" /> : <Sparkle size={36} className="text-kumo-subtle" />}
+      <div className="min-w-0">
+        <div className="truncate"><Text bold>{item?.name || fallback}</Text></div>
+        <div className="truncate"><Text size="xs" variant="secondary">{item ? [item.careerName, item.duration, item.reward].filter(Boolean).join(' · ') : '等待目录同步'}</Text></div>
       </div>
-    </Surface>
+    </div>
   );
 }
 
-function SettingSection({ title, children, wide = false }: { title: string; children: React.ReactNode; wide?: boolean }) {
+function SettingSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <Surface className={`grid grid-cols-1 gap-4 rounded-lg p-4 md:grid-cols-2 ${wide ? 'col-span-full' : ''}`}>
-      <div className="col-span-full"><Text as="h3" variant="heading3">{title}</Text></div>
-      {children}
-    </Surface>
+    <LayerCard>
+      <LayerCard.Secondary><Text as="h3" variant="heading3">{title}</Text></LayerCard.Secondary>
+      <LayerCard.Primary>
+        <Grid variant="2up" gap="base">
+          {Children.toArray(children).map((child, index) => {
+            const element = isValidElement<{ 'data-miku-wide'?: boolean }>(child) ? child : null;
+            const wide = Boolean(element?.props['data-miku-wide']);
+            return <GridItem key={element?.key ?? index} className={wide ? 'md:col-span-2' : undefined}>{child}</GridItem>;
+          })}
+        </Grid>
+      </LayerCard.Primary>
+    </LayerCard>
   );
 }
 
@@ -351,10 +359,12 @@ function App() {
         <section className="flex flex-col gap-4">
           <LayerCard>
             <SectionHeader title="自动托管" description="按当前设置自动照顾宠物并执行任务" badge={<Badge variant={automationRunning ? 'green' : 'neutral'}>{automationRunning ? '运行中' : '已停止'}</Badge>} />
-            <LayerCard.Primary className="flex flex-wrap items-center gap-2">
-              <Button id="start" variant={automationRunning ? 'destructive' : 'primary'} icon={automationRunning ? <Power /> : <Play />}>{automationRunning ? '停止' : '启动'}</Button>
-              <Button id="refresh" variant="secondary" icon={<ArrowClockwise />}>刷新状态</Button>
-              <Button id="once" variant="secondary" icon={<Sparkle />}>执行一轮</Button>
+            <LayerCard.Primary>
+              <Toolbar size="sm" aria-label="自动托管操作" className="w-fit max-w-full">
+                <Toolbar.Button id="start" icon={automationRunning ? <Power /> : <Play />}>{automationRunning ? '停止托管' : '启动托管'}</Toolbar.Button>
+                <Toolbar.Button id="refresh" icon={<ArrowClockwise />}>刷新</Toolbar.Button>
+                <Toolbar.Button id="once" icon={<Sparkle />}>执行一轮</Toolbar.Button>
+              </Toolbar>
               {state.error ? <Badge variant="red">{state.error}</Badge> : null}
             </LayerCard.Primary>
           </LayerCard>
@@ -391,19 +401,23 @@ function App() {
             </LayerCard.Primary>
           </LayerCard>
 
-          {telemetryItems.length ? <LayerCard>
+          {telemetryItems.length ? <LayerCard className="overflow-x-auto p-0">
             <SectionHeader title="成长遥测" description="任务结算前后属性、实际耗时与目录收益" badge={<Badge variant="purple">{pending ? `${telemetry.length} 次结算 · 当前任务进行中` : `${telemetry.length} 次结算 · 属性增量 ${formatNumber(totalGain, 1)}`}</Badge>} />
-            <LayerCard.Primary className="grid gap-2">
+            <Table layout="fixed">
+              <colgroup><col className="w-[28%]" /><col className="w-[28%]" /><col className="w-[44%]" /></colgroup>
+              <Table.Header variant="compact"><Table.Row><Table.Head>任务</Table.Head><Table.Head>耗时与收益</Table.Head><Table.Head>属性变化</Table.Head></Table.Row></Table.Header>
+              <Table.Body>
               {telemetryItems.map((item: AnyRecord, index: number) => {
                 const name = item.item?.name || ({ school: '学习', work: '打工', adventure: '冒险' } as AnyRecord)[item.kind] || item.kind || '任务';
                 const delta = item.delta ? Object.entries({ strength: '力量', intelligence: '智力', charm: '魅力' }).map(([key, label]) => `${label} ${Number(item.delta[key] || 0) >= 0 ? '+' : ''}${formatNumber(item.delta[key], 1)}`).join(' · ') : '属性快照缺失';
-                return <Surface key={`${item.startedAt || item.createdAt || index}-${index}`} className="rounded-lg p-3"><div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)]">
-                  <div className="truncate"><Text bold>{name}{item.attribute ? ` · ${attributeNames[item.attribute] || item.attribute}` : ''}</Text></div>
-                  <div className="truncate"><Text size="xs" variant="secondary">{[item.kind, item.elapsedSeconds ? `${item.elapsedSeconds}s` : '耗时未知', item.item?.reward || '收益未知'].filter(Boolean).join(' · ')}</Text></div>
-                  <Text size="sm" variant={item.status === 'running' ? 'secondary' : 'success'} bold>{item.status === 'running' ? '等待结算后记录实际属性增量' : delta}</Text>
-                </div></Surface>;
+                return <Table.Row key={`${item.startedAt || item.createdAt || index}-${index}`}>
+                  <Table.Cell><Text bold>{name}{item.attribute ? ` · ${attributeNames[item.attribute] || item.attribute}` : ''}</Text></Table.Cell>
+                  <Table.Cell><Text size="xs" variant="secondary">{[item.kind, item.elapsedSeconds ? `${item.elapsedSeconds}s` : '耗时未知', item.item?.reward || '收益未知'].filter(Boolean).join(' · ')}</Text></Table.Cell>
+                  <Table.Cell><Text size="sm" variant={item.status === 'running' ? 'secondary' : 'success'} bold>{item.status === 'running' ? '等待结算后记录实际属性增量' : delta}</Text></Table.Cell>
+                </Table.Row>;
               })}
-            </LayerCard.Primary>
+              </Table.Body>
+            </Table>
           </LayerCard> : null}
 
           {profile.medals?.length ? <LayerCard>
@@ -418,30 +432,48 @@ function App() {
             </LayerCard.Primary>
           </LayerCard> : null}
 
-          {state.interactions?.length ? <LayerCard>
+          {state.interactions?.length ? <LayerCard className="overflow-x-auto p-0">
             <SectionHeader title="互动消息" description="服务器返回的最近互动记录" badge={<Badge variant="purple">{state.interactions.length} 条</Badge>} />
-            <LayerCard.Primary className="grid max-h-96 gap-2 overflow-auto">
-              {state.interactions.map((item: AnyRecord) => <Surface key={item.id} className="rounded-lg p-3"><div className="flex flex-wrap items-center justify-between gap-2"><Text bold>{item.petName || `QQ ${item.uin || '未知'}`}</Text><Text size="xs" variant="secondary">{[({ 1: '喂食', 2: '踩踩', 5: '洗澡', 6: '火花', 6400: '打工', 6700: '冒险' } as AnyRecord)[item.eventType] || '互动', item.uin ? `QQ ${item.uin}` : '', item.timestamp ? new Date(item.timestamp).toLocaleString('zh-CN', { hour12: false }) : '时间未知'].filter(Boolean).join(' · ')}</Text></div><div className="mt-2"><Text size="sm">{item.text || ''}</Text></div></Surface>)}
-            </LayerCard.Primary>
+            <Table layout="fixed">
+              <colgroup><col className="w-[22%]" /><col className="w-[28%]" /><col className="w-[50%]" /></colgroup>
+              <Table.Header variant="compact"><Table.Row><Table.Head>对象</Table.Head><Table.Head>互动时间</Table.Head><Table.Head>内容</Table.Head></Table.Row></Table.Header>
+              <Table.Body>{state.interactions.map((item: AnyRecord) => <Table.Row key={item.id}>
+                <Table.Cell><Text bold>{item.petName || `QQ ${item.uin || '未知'}`}</Text></Table.Cell>
+                <Table.Cell><Text size="xs" variant="secondary">{[({ 1: '喂食', 2: '踩踩', 5: '洗澡', 6: '火花', 6400: '打工', 6700: '冒险' } as AnyRecord)[item.eventType] || '互动', item.timestamp ? new Date(item.timestamp).toLocaleString('zh-CN', { hour12: false }) : '时间未知'].filter(Boolean).join(' · ')}</Text></Table.Cell>
+                <Table.Cell><Text size="sm">{item.text || ''}</Text></Table.Cell>
+              </Table.Row>)}</Table.Body>
+            </Table>
           </LayerCard> : null}
 
-          {catalogs.careers.length ? <LayerCard>
+          {catalogs.careers.length ? <LayerCard className="overflow-x-auto p-0">
             <SectionHeader title="职业树" description="职业名称、编号与解锁说明" />
-            <LayerCard.Primary className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {catalogs.careers.map((career) => <Surface key={String(career.careerType)} className="rounded-lg p-3"><Text bold>{career.name || '未知职业'}</Text><Text size="xs" variant="secondary">职业编号 {career.careerType}</Text>{career.message ? <div className="mt-2 text-kumo-warning"><Text size="xs">解锁说明：{career.message}</Text></div> : null}</Surface>)}
-            </LayerCard.Primary>
+            <Table layout="fixed">
+              <colgroup><col className="w-[32%]" /><col className="w-[18%]" /><col className="w-[50%]" /></colgroup>
+              <Table.Header variant="compact"><Table.Row><Table.Head>职业</Table.Head><Table.Head>编号</Table.Head><Table.Head>解锁说明</Table.Head></Table.Row></Table.Header>
+              <Table.Body>{catalogs.careers.map((career) => <Table.Row key={String(career.careerType)}>
+                <Table.Cell><Text bold>{career.name || '未知职业'}</Text></Table.Cell>
+                <Table.Cell><Text size="sm" variant="secondary">{career.careerType}</Text></Table.Cell>
+                <Table.Cell><Text size="sm" variant="secondary">{career.message || '已解锁'}</Text></Table.Cell>
+              </Table.Row>)}</Table.Body>
+            </Table>
           </LayerCard> : null}
 
-          <LayerCard>
-            <SectionHeader title="托管设置" description="配置保存在 Miku 独立组件中" badge={<Button id="save" variant="primary" icon={<FloppyDisk />}>{dirty ? '保存设置（未保存）' : '保存设置'}</Button>} />
-            <LayerCard.Primary>
-              <form id="settings" className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={(event) => event.preventDefault()}>
-                <SettingSection title="培训策略">
+          <section className="flex flex-col gap-3" aria-labelledby="settings-title">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <Text as="h2" variant="heading2" id="settings-title">托管设置</Text>
+                <Text size="sm" variant="secondary">配置保存在 Miku 独立组件中</Text>
+              </div>
+              <Button id="save" variant="primary" icon={<FloppyDisk />}>{dirty ? '保存设置（未保存）' : '保存设置'}</Button>
+            </div>
+            <form id="settings" onSubmit={(event) => event.preventDefault()}>
+              <Grid variant="2up" gap="base">
+                <GridItem><SettingSection title="培训策略">
                   {select('schoolSelectionMode', '属性策略', [['lowest', '动态补最低属性'], ['rotation', '轮换三项属性'], ['fixed', '固定属性']])}
                   <div className="flex items-end"><Badge variant="purple">当前学习属性：{attributeNames[activeAttribute] || '--'}（{modeLabel}）</Badge></div>
-                  <div className="col-span-full"><Text size="xs" variant="secondary">动态模式会根据当前力量、智力和魅力的差距选择下一项课程。</Text></div>
-                </SettingSection>
-                <SettingSection title="安全与轮询">
+                  <div data-miku-wide><Text size="xs" variant="secondary">动态模式会根据当前力量、智力和魅力的差距选择下一项课程。</Text></div>
+                </SettingSection></GridItem>
+                <GridItem><SettingSection title="安全与轮询">
                   {toggle('safeMode', '安全模式（只读）')}
                   {toggle('autoStart', '启动时自动托管')}
                   {input('petId', 'Pet ID', 'text', { placeholder: 'AUTO 表示自动获取' })}
@@ -450,24 +482,24 @@ function App() {
                   {select('taskPriority', '任务优先顺序', [['school', '优先学习'], ['work', '优先打工']], { description: '金币不足时自动改为打工' })}
                   {select('fatigue8HourAction', '超过 8 小时后', [['rest', '休息'], ['work', '打工'], ['school', '学习'], ['adventure', '冒险']])}
                   {select('fatigue12HourAction', '超过 12 小时后', [['rest', '休息'], ['work', '打工'], ['school', '学习'], ['adventure', '冒险']])}
-                </SettingSection>
-                <SettingSection title="自动照顾">
+                </SettingSection></GridItem>
+                <GridItem><SettingSection title="自动照顾">
                   {toggle('careEnabled', '启用自动照顾')}
                   {toggle('autoBuySupplies', '自动购买用品')}
                   {input('hungerThreshold', '喂食阈值', 'number', { min: 0 })}
                   {input('cleanThreshold', '洗澡阈值', 'number', { min: 0 })}
                   {input('foodPurchaseCount', '购买饼干数', 'number', { min: 1 })}
                   {input('bathPurchaseCount', '购买沐浴球数', 'number', { min: 1 })}
-                </SettingSection>
-                <SettingSection title="学习">
+                </SettingSection></GridItem>
+                <GridItem><SettingSection title="学习">
                   {toggle('schoolEnabled', '启用自动学习')}
                   {select('schoolAttribute', '属性', [['physical', '力量'], ['culture', '智力'], ['art', '魅力']])}
                   {toggle('schoolRotationEnabled', '轮换模式启用周期轮换')}
                   {input('schoolRotationEvery', '每完成几次轮换', 'number', { min: 1 })}
                   {select('courseSubEvent', '课程', [['0', '自动最高效率'], ...catalogs.courses.map((item) => [String(item.subEventType), `${[item.name, item.duration, item.reward].filter(Boolean).join(' · ')}${item.canDo ? '' : '（不可用）'}`] as [string, string])])}
                   <CatalogPreview item={selectedCourse} fallback="自动选择课程" />
-                </SettingSection>
-                <SettingSection title="走访与照顾别人" wide>
+                </SettingSection></GridItem>
+                <GridItem className="md:col-span-2"><SettingSection title="走访与照顾别人">
                   {toggle('visitEnabled', '启用自动走访')}
                   {toggle('visitFriends', '走访好友')}
                   {toggle('visitStrangers', '走访陌生人')}
@@ -478,24 +510,24 @@ function App() {
                   {input('otherCareDailyExperienceLimit', '停止照顾的每日经验值', 'number', { min: 0 })}
                   {input('visitCandidateScanLimit', '候选扫描数', 'number', { min: 1, max: 200 })}
                   {input('visitStrangerGroupIds', '陌生人群号', 'text', { placeholder: '留空自动选群' })}
-                </SettingSection>
-                <SettingSection title="打工">
+                </SettingSection></GridItem>
+                <GridItem><SettingSection title="打工">
                   {toggle('workEnabled', '启用自动打工')}
                   {select('workJobSubEvent', '岗位', [['0', '自动最高效率'], ...jobs.map((item) => [String(item.subEventType), `${[item.careerName, item.name, item.duration, item.reward].filter(Boolean).join(' · ')}${item.canDo ? '' : '（不可用）'}`] as [string, string])])}
                   <CatalogPreview item={selectedJob} fallback="自动选择岗位" />
                   {input('workTimesPerDay', '每日打工次数', 'number', { min: 0 })}
                   {toggle('employFriend', '自动雇佣好友宠物')}
                   {input('workFriendScanLimit', '雇佣候选扫描数', 'number', { min: 1, max: 200 })}
-                </SettingSection>
-                <SettingSection title="冒险">
+                </SettingSection></GridItem>
+                <GridItem><SettingSection title="冒险">
                   {toggle('adventureEnabled', '启用自动冒险')}
                   {select('adventureOption', '冒险', [['', '服务器首个可用项'], ...catalogs.adventures.map((item) => [String(item.name), `${item.name} · ${item.duration}${item.canDo ? '' : '（不可用）'}`] as [string, string])])}
                   {input('adventureStartTime', '开始时间', 'time')}
                   {input('adventureTimesPerDay', '每日冒险次数', 'number', { min: 0 })}
-                </SettingSection>
-              </form>
-            </LayerCard.Primary>
-          </LayerCard>
+                </SettingSection></GridItem>
+              </Grid>
+            </form>
+          </section>
 
           <LayerCard>
             <SectionHeader title="运行日志" />
