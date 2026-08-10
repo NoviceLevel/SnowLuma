@@ -50,12 +50,25 @@ const DEFAULT_CONFIG_VALUES = {
   adventureEnabled: false,
   adventureOption: "",
   adventureStartTime: "20:00",
+  adventureEndTime: "23:59",
   adventureTimesPerDay: 3,
   settleRetrySeconds: 60,
   startConfirmSeconds: 45
 };
 const DEFAULT_CONFIG = DEFAULT_CONFIG_VALUES;
+const TIME_OF_DAY_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const NUMERIC_CONFIG_KEYS = ["intervalSeconds", "statusRefreshSeconds", "coinThreshold", "hungerThreshold", "cleanThreshold", "foodPurchaseCount", "bathPurchaseCount", "verifyDelaySeconds", "failureCooldownSeconds", "schoolRotationEvery", "courseSubEvent", "visitMaxPerDay", "visitDelayMinMinutes", "visitDelayMaxMinutes", "otherCareDailyExperienceLimit", "visitCandidateScanLimit", "workCareerType", "workJobSubEvent", "workTimesPerDay", "workFriendScanLimit", "adventureTimesPerDay", "settleRetrySeconds", "startConfirmSeconds"];
+function normalizeTimeOfDay(value, fallback) {
+  const text = String(value ?? "").trim();
+  return TIME_OF_DAY_PATTERN.test(text) ? text : fallback;
+}
+function isWithinTimeWindow(nowHhmm, startHhmm, endHhmm) {
+  if (startHhmm <= endHhmm) {
+    return nowHhmm >= startHhmm && nowHhmm <= endHhmm;
+  }
+  // Cross-midnight window, e.g. 22:00 → 02:00.
+  return nowHhmm >= startHhmm || nowHhmm <= endHhmm;
+}
 function normalizeConfig(input) {
   const normalized = {
     ...DEFAULT_CONFIG
@@ -92,9 +105,8 @@ function normalizeConfig(input) {
   if (!["rest", "work", "school", "adventure"].includes(config.fatigue12HourAction)) {
     config.fatigue12HourAction = "rest";
   }
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(config.adventureStartTime)) {
-    config.adventureStartTime = "20:00";
-  }
+  config.adventureStartTime = normalizeTimeOfDay(config.adventureStartTime, "20:00");
+  config.adventureEndTime = normalizeTimeOfDay(config.adventureEndTime, "23:59");
   config.intervalSeconds = Math.max(3, Math.min(300, Math.trunc(config.intervalSeconds)));
   config.statusRefreshSeconds = config.intervalSeconds;
   config.foodPurchaseCount = Math.max(1, Math.trunc(config.foodPurchaseCount));
@@ -105,6 +117,10 @@ function normalizeConfig(input) {
   config.otherCareDailyExperienceLimit = Math.trunc(config.otherCareDailyExperienceLimit);
   config.visitCandidateScanLimit = Math.max(1, Math.min(200, Math.trunc(config.visitCandidateScanLimit)));
   config.workFriendScanLimit = Math.max(1, Math.min(200, Math.trunc(config.workFriendScanLimit)));
+  config.verifyDelaySeconds = Math.max(0, Math.min(30, Math.trunc(config.verifyDelaySeconds)));
+  config.failureCooldownSeconds = Math.max(0, Math.trunc(config.failureCooldownSeconds));
+  config.settleRetrySeconds = Math.max(1, Math.trunc(config.settleRetrySeconds));
+  config.startConfirmSeconds = Math.max(5, Math.trunc(config.startConfirmSeconds));
   return config;
 }
 function isAutoPetId(arg1) {
@@ -612,12 +628,13 @@ function yt(arg133) {
   }
   return "";
 }
-function V(arg134) {
-  const value37 = "(\\d+(?:\\.\\d+)?)";
-  const value38 = arg134.match(new RegExp("(?:总收益|合计|总计)\\D*" + value37))?.[1];
-  const value39 = arg134.match(new RegExp("金币\\D*" + value37))?.[1];
-  const value40 = arg134.match(new RegExp(value37))?.[1];
-  return Number(value38 ?? value39 ?? value40 ?? 0);
+function parseRewardAmount(rewardText) {
+  const text = String(rewardText ?? "");
+  const numberPattern = "(\\d+(?:\\.\\d+)?)";
+  const total = text.match(new RegExp("(?:总收益|合计|总计|共获得|合计获得)\\D*" + numberPattern))?.[1];
+  const gold = text.match(new RegExp("(?:金币|金豆|经验)\\D*" + numberPattern))?.[1];
+  const first = text.match(new RegExp(numberPattern))?.[1];
+  return Number(total ?? gold ?? first ?? 0);
 }
 function _(...arg135) {
   for (const value42 of arg135) {
@@ -687,65 +704,67 @@ function H(arg139, arg214 = {}) {
     ...arg214
   };
 }
-function Q(arg140) {
-  const value48 = Number(arg140.match(/(\d+)\s*小时/)?.[1] ?? 0);
-  const value49 = Number(arg140.match(/(\d+)\s*分钟/)?.[1] ?? 0);
-  const value50 = Number(arg140.match(/(\d+)\s*秒/)?.[1] ?? 0);
-  return value48 * 3600 + value49 * 60 + value50;
+function parseDurationSeconds(durationText) {
+  const text = String(durationText ?? "");
+  const hours = Number(text.match(/(\d+)\s*(?:小时|时|h\b)/i)?.[1] ?? 0);
+  const minutes = Number(text.match(/(\d+)\s*(?:分钟|分|m\b)/i)?.[1] ?? 0);
+  const seconds = Number(text.match(/(\d+)\s*(?:秒|s\b)/i)?.[1] ?? 0);
+  return hours * 3600 + minutes * 60 + seconds;
 }
-function at(arg141, arg215) {
-  const value52 = Q(arg141.duration);
-  const value53 = Q(arg215.duration);
-  const value54 = V(arg141.reward);
-  const value55 = V(arg215.reward);
-  if (value52 > 0 && value53 > 0) {
-    const value51 = value55 * value52 - value54 * value53;
-    if (value51) {
-      return value51;
+function compareRewardPerSecond(left, right) {
+  const leftDuration = parseDurationSeconds(left.duration);
+  const rightDuration = parseDurationSeconds(right.duration);
+  const leftReward = parseRewardAmount(left.reward);
+  const rightReward = parseRewardAmount(right.reward);
+  if (leftDuration > 0 && rightDuration > 0) {
+    const cross = rightReward * leftDuration - leftReward * rightDuration;
+    if (cross) {
+      return cross;
     }
-  } else if (value52 !== value53) {
-    if (value52 > 0) {
+  } else if (leftDuration !== rightDuration) {
+    if (leftDuration > 0) {
       return -1;
     } else {
       return 1;
     }
   }
-  return value55 - value54;
+  return rightReward - leftReward;
 }
-function Ut(arg142) {
-  let value56 = arg142.trim();
-  const value57 = arg142.match(/[?&]text=([^)&\s]+)/)?.[1];
-  if (value57) {
+function parseFatigueStatus(warningText) {
+  const raw = String(warningText ?? "");
+  let decoded = raw.trim();
+  const encoded = raw.match(/[?&]text=([^)&\s]+)/)?.[1];
+  if (encoded) {
     try {
-      value56 = decodeURIComponent(value57);
+      decoded = decodeURIComponent(encoded);
     } catch {}
   }
-  const value58 = arg142 + "\n" + value56;
-  const value59 = {
+  const haystack = raw + "\n" + decoded;
+  const tier12 = {
     fatigued: true,
     tier: 12,
     benefitRate: 0.1,
-    reason: value56 || "服务器提示已超过 12 小时"
+    reason: decoded || "服务器提示已超过 12 小时"
   };
-  const value60 = {
+  const tier8 = {
     fatigued: true,
     tier: 8,
     benefitRate: 0.25,
-    reason: value56 || "服务器提示已超过 8 小时"
+    reason: decoded || "服务器提示已超过 8 小时"
   };
-  const value61 = {
+  const rested = {
     fatigued: false,
     tier: 0,
     benefitRate: 1,
     reason: "服务器当前未返回疲劳提示"
   };
-  if (/非常累|超出\s*12\s*小时|降低至\s*10%/.test(value58)) {
-    return value59;
-  } else if (/疲惫|超出\s*8\s*小时|收益减少|降低至\s*25%/.test(value58)) {
-    return value60;
-  } else {
-    return value61;
+  if (/非常累|极度疲劳|超出\s*12\s*小时|超过\s*12\s*小时|降低至\s*10\s*%|收益.*10\s*%/.test(haystack)) {
+    return tier12;
   }
+  if (/疲惫|有点累|超出\s*8\s*小时|超过\s*8\s*小时|收益减少|降低至\s*25\s*%|收益.*25\s*%/.test(haystack)) {
+    return tier8;
+  }
+  return rested;
 }
 class QQPetApi {
   constructor(arg143, arg216) {
@@ -1114,7 +1133,7 @@ class QQPetApi {
       throw new QQPetError("未知学习属性：" + arg160);
     }
     const items20 = (await this.querySchoolCourses()).filter(item12 => item12.canDo && item12.subEventType > 0);
-    const value150 = arg223 ? items20.find(item13 => item13.subEventType === arg223) : items20.filter(item14 => item14.reward.includes(value149)).sort(at)[0];
+    const value150 = arg223 ? items20.find(item13 => item13.subEventType === arg223) : items20.filter(item14 => item14.reward.includes(value149)).sort(compareRewardPerSecond)[0];
     if (!value150) {
       throw new QQPetError(arg223 ? "指定课程 " + arg223 + " 当前不可用" : "当前暂无可用的" + value149 + "课程");
     }
@@ -1175,7 +1194,7 @@ class QQPetApi {
         throw error3;
       }
     }))).flat().filter(item22 => item22.canDo && item22.subEventType > 0);
-    const value165 = arg226 ? value164.find(item23 => item23.subEventType === arg226) : value164.sort((left, right) => at(left, right) || +(right.careerType === value163.currentCareerType) - +(left.careerType === value163.currentCareerType) || (left.careerType ?? 0) - (right.careerType ?? 0))[0];
+    const value165 = arg226 ? value164.find(item23 => item23.subEventType === arg226) : value164.sort((left, right) => compareRewardPerSecond(left, right) || +(right.careerType === value163.currentCareerType) - +(left.careerType === value163.currentCareerType) || (left.careerType ?? 0) - (right.careerType ?? 0))[0];
     if (!value165) {
       throw new QQPetError(arg226 ? "指定岗位 " + arg226 + " 当前不可用" : "服务器当前没有可执行的打工岗位");
     }
@@ -1213,9 +1232,9 @@ class QQPetApi {
         }
         items23 = await this.querySchoolCourses();
       }
-      const value174 = items23.filter(item27 => item27.name).sort((left2, right2) => (Q(left2.duration) || Number.MAX_SAFE_INTEGER) - (Q(right2.duration) || Number.MAX_SAFE_INTEGER))[0];
+      const value174 = items23.filter(item27 => item27.name).sort((left2, right2) => (parseDurationSeconds(left2.duration) || Number.MAX_SAFE_INTEGER) - (parseDurationSeconds(right2.duration) || Number.MAX_SAFE_INTEGER))[0];
       if (value174) {
-        return Ut(value174.warning ?? "");
+        return parseFatigueStatus(value174.warning ?? "");
       } else {
         return {
           fatigued: null,
@@ -1314,7 +1333,7 @@ function selectSchoolAttribute(config, values, rotationIndex = 0) {
     return lowestSchoolAttribute(config, values);
   }
   if (config.schoolSelectionMode === "rotation") {
-    return jt({ ...config, schoolRotationEnabled: true }, rotationIndex);
+    return rotateSchoolAttribute({ ...config, schoolRotationEnabled: true }, rotationIndex);
   }
   return config.schoolAttribute;
 }
@@ -1326,37 +1345,36 @@ function telemetryDelta(before, after) {
     charm: Number((after.charm - before.charm).toFixed(3))
   };
 }
-function ut(arg169, arg228, arg38 = Math.random) {
-  const value185 = Math.max(0, Math.trunc(arg169 * 60));
-  const value186 = Math.max(value185, Math.trunc(arg228 * 60));
-  return value185 + Math.floor(Math.min(0.999999999, Math.max(0, arg38())) * (value186 - value185 + 1));
+function randomDelaySeconds(minMinutes, maxMinutes, random = Math.random) {
+  const minSeconds = Math.max(0, Math.trunc(minMinutes * 60));
+  const maxSeconds = Math.max(minSeconds, Math.trunc(maxMinutes * 60));
+  return minSeconds + Math.floor(Math.min(0.999999999, Math.max(0, random())) * (maxSeconds - minSeconds + 1));
 }
-function jt(arg170, arg229) {
-  if (!arg170.schoolRotationEnabled) {
-    return arg170.schoolAttribute;
+function rotateSchoolAttribute(config, rotationIndex) {
+  if (!config.schoolRotationEnabled) {
+    return config.schoolAttribute;
   }
-  const value187 = ATTRIBUTE_ROTATION.indexOf(arg170.schoolAttribute);
-  return ATTRIBUTE_ROTATION[(value187 + Math.max(0, Math.trunc(arg229))) % ATTRIBUTE_ROTATION.length];
+  const base = ATTRIBUTE_ROTATION.indexOf(config.schoolAttribute);
+  return ATTRIBUTE_ROTATION[(base + Math.max(0, Math.trunc(rotationIndex))) % ATTRIBUTE_ROTATION.length];
 }
-function Ht(arg171, values2, arg39) {
-  const value188 = {
-    school: arg171.schoolEnabled && values2.gold >= arg171.coinThreshold,
-    work: arg171.workEnabled && (!arg171.workTimesPerDay || (arg39.work ?? 0) < arg171.workTimesPerDay)
+function selectSchoolOrWork(config, values, counts) {
+  const available = {
+    school: config.schoolEnabled && values.gold >= config.coinThreshold,
+    work: config.workEnabled && (!config.workTimesPerDay || (counts.work ?? 0) < config.workTimesPerDay)
   };
-  const value189 = value188;
-  return (arg171.taskPriority === "work" ? ["work", "school"] : ["school", "work"]).find(item30 => value189[item30]) ?? null;
+  return (config.taskPriority === "work" ? ["work", "school"] : ["school", "work"]).find((kind) => available[kind]) ?? null;
 }
-function zt(arg172, arg230) {
-  if (!arg230.fatigued || !arg230.tier) {
+function fatigueAction(config, fatigue) {
+  if (!fatigue.fatigued || !fatigue.tier) {
     return null;
-  } else if (arg230.tier >= 12) {
-    return arg172.fatigue12HourAction;
-  } else {
-    return arg172.fatigue8HourAction;
   }
+  if (fatigue.tier >= 12) {
+    return config.fatigue12HourAction;
+  }
+  return config.fatigue8HourAction;
 }
-function lt(story2, arg231) {
-  const value190 = {
+function clearFinishedStoryDisplay(story, settled) {
+  const emptyStory = {
     storyId: "",
     stateCode: 0,
     remainingSeconds: 0,
@@ -1365,17 +1383,33 @@ function lt(story2, arg231) {
     recallable: false,
     finished: false
   };
-  if (!story2.storyId || !story2.finished || !arg231) {
-    return story2;
-  } else {
-    return value190;
+  if (!story.storyId || !story.finished || !settled) {
+    return story;
   }
+  return emptyStory;
 }
-function Wt(error4) {
-  return /宠物结算条件不满足|(?:任务|故事).*(?:已结算|不存在|已失效)|无需结算/.test(error4 instanceof Error ? error4.message : String(error4));
+function isIrrecoverableSettleError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /宠物结算条件不满足|(?:任务|故事).*(?:已结算|不存在|已失效|已完成)|无需结算|settle.*(?:already|not found|invalid|expired)/i.test(message);
 }
-function Jt(arg173, arg232) {
-  return arg232.bonus - arg173.bonus || arg232.totalReward - arg173.totalReward || arg232.target.level - arg173.target.level || arg173.target.uin.localeCompare(arg232.target.uin);
+function compareEmployableFriends(left, right) {
+  return right.bonus - left.bonus
+    || right.totalReward - left.totalReward
+    || right.target.level - left.target.level
+    || left.target.uin.localeCompare(right.target.uin);
+}
+function isAdventureWindowOpen(config, now = new Date()) {
+  if (!config.adventureEnabled) {
+    return false;
+  }
+  const hhmm = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+  return isWithinTimeWindow(hhmm, config.adventureStartTime, config.adventureEndTime);
+}
+function decideNextTask(config, values, counts, now = new Date()) {
+  if (isAdventureWindowOpen(config, now) && (!config.adventureTimesPerDay || (counts.adventure ?? 0) < config.adventureTimesPerDay)) {
+    return "adventure";
+  }
+  return selectSchoolOrWork(config, values, counts);
 }
 class AutomationController {
   constructor(arg174, arg233) {
@@ -1555,14 +1589,7 @@ class AutomationController {
     });
   }
   decide(arg178, arg235) {
-    const value198 = this.progress.snapshot().counts;
-    const value199 = new Date();
-    const value200 = String(value199.getHours()).padStart(2, "0") + ":" + String(value199.getMinutes()).padStart(2, "0");
-    if (arg178.adventureEnabled && value200 >= arg178.adventureStartTime && (!arg178.adventureTimesPerDay || value198.adventure < arg178.adventureTimesPerDay)) {
-      return "adventure";
-    } else {
-      return Ht(arg178, arg235, value198);
-    }
+    return decideNextTask(arg178, arg235, this.progress.snapshot().counts);
   }
   actionArray(arg181) {
     if (Array.isArray(arg181)) {
@@ -1660,7 +1687,7 @@ class AutomationController {
       this.host.log("读取普通岗位收益失败，无法比较好友雇佣加成：" + (error7 instanceof Error ? error7.message : String(error7)));
       return null;
     }
-    const value218 = V(value217.reward);
+    const value218 = parseRewardAmount(value217.reward);
     const value219 = value217.careerType;
     if (!value219) {
       this.host.log("服务器未返回基准岗位所属职业，无法比较好友雇佣加成，本次按普通打工继续");
@@ -1679,7 +1706,7 @@ class AutomationController {
           value216 = this.targetLabel(target7) + "不能参加当前岗位";
           continue;
         }
-        const value214 = V(value213.reward);
+        const value214 = parseRewardAmount(value213.reward);
         items34.push({
           target: target7,
           jobSubEvent: value213.subEventType,
@@ -1693,7 +1720,7 @@ class AutomationController {
         }
       }
     }
-    items34.sort(Jt);
+    items34.sort(compareEmployableFriends);
     if (items34[0]) {
       const value215 = items34[0];
       this.host.log("已比较 " + items34.length + " 只可雇佣好友宠物，选择" + this.targetLabel(value215.target) + "，预计雇佣加成 " + (value215.bonus >= 0 ? "+" : "") + value215.bonus);
@@ -1744,7 +1771,7 @@ class AutomationController {
               this.host.log("走访已完成，暂无法读取对方宠物状态：" + (error9 instanceof Error ? error9.message : String(error9)));
             }
           }
-          const value222 = ut(config2.visitDelayMinMinutes, config2.visitDelayMaxMinutes);
+          const value222 = randomDelaySeconds(config2.visitDelayMinMinutes, config2.visitDelayMaxMinutes);
           this.progress.setBlock("visit", "等待下次走访", value222);
           this.host.updateStatus({
             activity: "自动走访已完成"
@@ -1754,7 +1781,7 @@ class AutomationController {
           value228 = error10 instanceof Error ? error10.message : String(error10);
         }
       }
-      const value224 = ut(config2.visitDelayMinMinutes, config2.visitDelayMaxMinutes);
+      const value224 = randomDelaySeconds(config2.visitDelayMinMinutes, config2.visitDelayMaxMinutes);
       this.progress.setBlock("visit", value228 || "暂无可走访的宠物", value224);
       if (value228) {
         this.host.log("走访候选检查未成功：" + value228);
@@ -1831,7 +1858,7 @@ class AutomationController {
             afterValues = await arg188.queryValues();
             this.progress.recordAttributes(afterValues);
           } catch (error) {
-            this.host.log("浠诲姟宸茬粨绠楋紝浣嗘棤娉曡鍙栨渶鏂板睘鎬э細" + (error instanceof Error ? error.message : String(error)));
+            this.host.log("任务已结算，但无法读取最新属性：" + (error instanceof Error ? error.message : String(error)));
           }
           this.recordTaskTelemetry(story5, "settled", afterValues);
           this.progress.markStorySettled(story4.storyId);
@@ -1850,7 +1877,7 @@ class AutomationController {
           }
           this.host.log("任务已结算并记录：" + story4.storyId);
         } catch (value231) {
-          if (Wt(value231)) {
+          if (isIrrecoverableSettleError(value231)) {
             this.progress.dismissStory(story4.storyId);
             if (story5?.storyId === story4.storyId) {
               this.progress.clearPending();
@@ -1859,7 +1886,7 @@ class AutomationController {
             this.host.updateStatus({
               connected: true,
               error: null,
-              story: lt(story4, true),
+              story: clearFinishedStoryDisplay(story4, true),
               progress: this.progress.snapshot(),
               activity: "服务器残留任务已忽略，当前空闲"
             });
@@ -1883,7 +1910,7 @@ class AutomationController {
     this.petName = arg189.name;
     const value236 = this.progress.snapshot();
     const value237 = this.progress.storyWasSettled(story6.storyId) || this.progress.storyWasDismissed(story6.storyId);
-    const value238 = lt(story6, value237);
+    const value238 = clearFinishedStoryDisplay(story6, value237);
     const value239 = {
       ...arg5,
       ...arg6
@@ -2029,7 +2056,14 @@ class AutomationController {
               return "wash_unavailable";
             }
             value256 = "2";
-            await value264.buyBathItem(value256, config3.bathPurchaseCount);
+            const bathPurchase = await value264.buyBathItem(value256, config3.bathPurchaseCount);
+            if (!bathPurchase.succeeded) {
+              throw new QQPetError("购买洗护道具失败：" + (bathPurchase.result ? "result=" + bathPurchase.result : "未返回订单"));
+            }
+            bathInventory3 = await value264.queryBathInventory();
+            if ((value256 === "2" ? bathInventory3.bathBall : bathInventory3.soap) <= 0) {
+              throw new QQPetError("购买洗护道具后库存仍为空");
+            }
           }
           await value264.useBathItem(value256);
           await delaySeconds(config3.verifyDelaySeconds);
@@ -2052,7 +2086,7 @@ class AutomationController {
       if (await this.handleStory(value264, config3, story10)) {
         return "story";
       }
-      const value267 = zt(config3, value266);
+      const value267 = fatigueAction(config3, value266);
       if (value267 === "rest") {
         const value257 = value266.tier === 12 ? "12 小时" : "8 小时";
         const value258 = {
@@ -2902,10 +2936,22 @@ export {
   DEFAULT_CONFIG,
   ProgressStore,
   QQPetPlugin,
+  compareEmployableFriends,
+  compareRewardPerSecond,
   createApiToken,
   createWebServer,
+  decideNextTask,
+  fatigueAction,
+  isAdventureWindowOpen,
+  isIrrecoverableSettleError,
+  isWithinTimeWindow,
   normalizeConfig,
+  parseDurationSeconds,
+  parseFatigueStatus,
+  parseRewardAmount,
   resolveStaticAssetPath,
+  rotateSchoolAttribute,
   selectSchoolAttribute,
+  selectSchoolOrWork,
   writeJsonAtomically
 };

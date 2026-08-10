@@ -49,10 +49,11 @@ const toastManager = createKumoToastManager();
 const emptyCatalogs: Catalogs = { courses: [], careers: [], adventures: [], bathItems: [] };
 const numericFields = new Set([
   'intervalSeconds', 'coinThreshold', 'hungerThreshold', 'cleanThreshold', 'foodPurchaseCount',
-  'bathPurchaseCount', 'schoolRotationEvery', 'courseSubEvent', 'visitMaxPerDay',
-  'visitDelayMinMinutes', 'visitDelayMaxMinutes', 'otherCareDailyExperienceLimit',
-  'visitCandidateScanLimit', 'workJobSubEvent', 'workTimesPerDay', 'workFriendScanLimit',
-  'adventureTimesPerDay',
+  'bathPurchaseCount', 'verifyDelaySeconds', 'failureCooldownSeconds', 'schoolRotationEvery',
+  'courseSubEvent', 'visitMaxPerDay', 'visitDelayMinMinutes', 'visitDelayMaxMinutes',
+  'otherCareDailyExperienceLimit', 'visitCandidateScanLimit', 'workCareerType', 'workJobSubEvent',
+  'workTimesPerDay', 'workFriendScanLimit', 'adventureTimesPerDay', 'settleRetrySeconds',
+  'startConfirmSeconds',
 ]);
 
 const formatNumber = (value: unknown, digits = 0) => Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : '--';
@@ -547,6 +548,10 @@ function App() {
                   {select('taskPriority', '任务优先顺序', [['school', '优先学习'], ['work', '优先打工']], { description: '金币不足时自动改为打工' })}
                   {select('fatigue8HourAction', '超过 8 小时后', [['rest', '休息'], ['work', '打工'], ['school', '学习'], ['adventure', '冒险']])}
                   {select('fatigue12HourAction', '超过 12 小时后', [['rest', '休息'], ['work', '打工'], ['school', '学习'], ['adventure', '冒险']])}
+                  {input('verifyDelaySeconds', '写后验证等待秒数', 'number', { min: 0, max: 30, description: '喂食/洗澡/结算后复查属性前的等待' })}
+                  {input('failureCooldownSeconds', '失败冷却秒数', 'number', { min: 0, description: '照料失败后的封锁时长' })}
+                  {input('settleRetrySeconds', '结算重试间隔秒数', 'number', { min: 1 })}
+                  {input('startConfirmSeconds', '任务失踪确认窗口秒数', 'number', { min: 5, description: '本地已开工但服务器暂未返回任务时的等待' })}
                 </SettingSection></GridItem>
                 <GridItem><SettingSection title="自动照顾">
                   {toggle('careEnabled', '启用自动照顾')}
@@ -578,6 +583,7 @@ function App() {
                 </SettingSection></GridItem>
                 <GridItem><SettingSection title="打工">
                   {toggle('workEnabled', '启用自动打工')}
+                  {input('workCareerType', '职业编号', 'number', { min: 0, description: '0 表示自动选择开放职业' })}
                   {select('workJobSubEvent', '岗位', [['0', '自动最高效率'], ...jobs.map((item) => [String(item.subEventType), `${[item.careerName, item.name, item.duration, item.reward].filter(Boolean).join(' · ')}${item.canDo ? '' : '（不可用）'}`] as [string, string])])}
                   <CatalogPreview item={selectedJob} fallback="自动选择岗位" />
                   {input('workTimesPerDay', '每日打工次数', 'number', { min: 0 })}
@@ -588,6 +594,7 @@ function App() {
                   {toggle('adventureEnabled', '启用自动冒险')}
                   {select('adventureOption', '冒险', [['', '服务器首个可用项'], ...catalogs.adventures.map((item) => [String(item.name), `${item.name} · ${item.duration}${item.canDo ? '' : '（不可用）'}`] as [string, string])])}
                   {input('adventureStartTime', '开始时间', 'time')}
+                  {input('adventureEndTime', '结束时间', 'time', { description: '支持跨零点，例如 22:00–02:00' })}
                   {input('adventureTimesPerDay', '每日冒险次数', 'number', { min: 0 })}
                 </SettingSection></GridItem>
               </Grid>

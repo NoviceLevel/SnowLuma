@@ -18,6 +18,10 @@ function reportOnce(key, message) {
   process.stderr.write(`[Miku] ${message}\n`);
 }
 
+function report(message) {
+  process.stderr.write(`[Miku] ${message}\n`);
+}
+
 function isValidPort(value) {
   const port = Number(value);
   return Number.isSafeInteger(port) && port >= 1 && port <= 65535;
@@ -82,13 +86,30 @@ function validateBasePort() {
   return value;
 }
 
+function waitForExit(child, timeoutMs = 5000) {
+  return new Promise((resolve) => {
+    if (!child || child.exitCode !== null) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (child.exitCode === null) child.kill('SIGKILL');
+      resolve();
+    }, timeoutMs);
+    child.once('exit', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
 async function main() {
   const baseWebPort = validateBasePort();
   const baseDataDir = process.env.QQPET_DATA_DIR?.trim();
+  /** @type {Map<string, { account: any, child: import('node:child_process').ChildProcess | null, restarts: number, index: number, key: string, restartTimer?: NodeJS.Timeout }>} */
   const workers = new Map();
   let shuttingDown = false;
   let syncing = false;
-  let lastSignature = '';
   let syncTimer;
 
   function desiredAccounts() {
@@ -98,7 +119,16 @@ async function main() {
     return fallbackAccounts();
   }
 
-  function spawnWorker(account, index) {
+  function clearRestartTimer(record) {
+    if (record?.restartTimer) {
+      clearTimeout(record.restartTimer);
+      record.restartTimer = undefined;
+    }
+  }
+
+  function spawnWorker(account, index, restarts = 0) {
+    const existing = workers.get(account.uin);
+    clearRestartTimer(existing);
     const env = {
       ...process.env,
       QQPET_ONEBOT_URL: account.url,
@@ -114,47 +144,60 @@ async function main() {
       stdio: 'inherit',
       windowsHide: true,
     });
-    const record = { account, child, restarts: (workers.get(key)?.restarts ?? 0) };
+    const record = {
+      account,
+      child,
+      restarts,
+      index,
+      key: accountKey(account),
+    };
     workers.set(key, record);
     child.once('error', (error) => {
-      reportOnce(`${key}:error:${error.message}`, `账号 ${key} 子进程错误：${error.message}`);
+      report(`账号 ${key} 子进程错误：${error.message}`);
     });
     child.once('exit', (code, signal) => {
-      if (workers.get(key)?.child === child) {
-        workers.get(key).child = null;
-      }
-      if (shuttingDown || syncing) return;
-      const next = workers.get(key);
-      if (next) next.restarts += 1;
-      reportOnce(`${key}:exit:${code ?? signal ?? 'unknown'}`, `账号 ${key} 子进程退出（${code ?? signal ?? 'unknown'}），将自动重启`);
-      const delay = Math.min(30000, 1000 * (2 ** Math.min(5, next?.restarts ?? 1)));
-      setTimeout(() => void syncWorkers(), delay).unref?.();
+      const current = workers.get(key);
+      if (!current || current.child !== child) return;
+      current.child = null;
+      // Still schedule a solo restart while syncing; spawnWorker clears any pending timer.
+      if (shuttingDown) return;
+      current.restarts += 1;
+      const delay = Math.min(30000, 1000 * (2 ** Math.min(5, current.restarts)));
+      report(`账号 ${key} 子进程退出（${code ?? signal ?? 'unknown'}），${delay}ms 后单独重启（第 ${current.restarts} 次）`);
+      clearRestartTimer(current);
+      current.restartTimer = setTimeout(() => {
+        if (shuttingDown) return;
+        const latest = workers.get(key);
+        if (!latest || latest.child) return;
+        const accounts = desiredAccounts();
+        const nextIndex = accounts.findIndex((item) => item.uin === key);
+        if (nextIndex < 0) {
+          workers.delete(key);
+          return;
+        }
+        const nextAccount = accounts[nextIndex];
+        spawnWorker(nextAccount, nextIndex, latest.restarts);
+      }, delay);
+      current.restartTimer.unref?.();
     });
   }
 
-  async function stopWorkers() {
-    const records = [...workers.values()];
-    for (const record of records) {
-      if (record.child && record.child.exitCode === null) {
-        record.child.kill('SIGTERM');
-      }
+  async function stopWorker(uin, { remove = true } = {}) {
+    const record = workers.get(uin);
+    if (!record) return;
+    clearRestartTimer(record);
+    const child = record.child;
+    if (remove) workers.delete(uin);
+    else record.child = null;
+    if (child && child.exitCode === null) {
+      child.kill('SIGTERM');
+      await waitForExit(child, 5000);
     }
-    await Promise.all(records.map((record) => new Promise((resolve) => {
-      const child = record.child;
-      if (!child || child.exitCode !== null) {
-        resolve();
-        return;
-      }
-      const timer = setTimeout(() => {
-        if (child.exitCode === null) child.kill('SIGKILL');
-        resolve();
-      }, 5000);
-      child.once('exit', () => {
-        clearTimeout(timer);
-        resolve();
-      });
-    })));
-    workers.clear();
+  }
+
+  async function stopWorkers() {
+    const uins = [...workers.keys()];
+    await Promise.all(uins.map((uin) => stopWorker(uin)));
   }
 
   async function syncWorkers() {
@@ -162,15 +205,41 @@ async function main() {
     syncing = true;
     try {
       const accounts = desiredAccounts();
-      const signature = accounts.map(accountKey).join('\n');
-      const alive = accounts.every((account) => {
-        const child = workers.get(account.uin)?.child;
-        return child && child.exitCode === null;
-      });
-      if (signature === lastSignature && alive) return;
-      await stopWorkers();
-      accounts.forEach((account, index) => spawnWorker(account, index));
-      lastSignature = signature;
+      const desiredUins = new Set(accounts.map((account) => account.uin));
+
+      for (const uin of [...workers.keys()]) {
+        if (!desiredUins.has(uin)) {
+          report(`账号 ${uin} 已从配置中移除，停止对应工作进程`);
+          await stopWorker(uin);
+        }
+      }
+
+      for (let index = 0; index < accounts.length; index += 1) {
+        const account = accounts[index];
+        const record = workers.get(account.uin);
+        const nextKey = accountKey(account);
+        const alive = Boolean(record?.child && record.child.exitCode === null);
+        const sameConfig = record?.key === nextKey;
+        const samePort = record?.index === index;
+
+        if (alive && sameConfig && samePort) {
+          continue;
+        }
+
+        if (record) {
+          const reason = !sameConfig
+            ? '配置变更'
+            : !samePort
+              ? `端口序号调整（${record.index}→${index}）`
+              : '进程未运行';
+          if (alive || record.child) {
+            report(`账号 ${account.uin} ${reason}，仅重启该账号`);
+          }
+          await stopWorker(account.uin);
+        }
+
+        spawnWorker(account, index, record?.restarts ?? 0);
+      }
     } finally {
       syncing = false;
     }
@@ -198,4 +267,4 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   });
 }
 
-export { configuredAccounts };
+export { accountKey, configuredAccounts };
