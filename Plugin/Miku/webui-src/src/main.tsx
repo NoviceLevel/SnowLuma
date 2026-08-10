@@ -104,17 +104,43 @@ function SectionHeader({ title, description, badge }: { title: string; descripti
   );
 }
 
-function MetricCard({ label, value, detail, badge, icon }: { label: string; value: React.ReactNode; detail?: React.ReactNode; badge?: React.ReactNode; icon?: React.ReactNode }) {
+/**
+ * Dense metric tile for status grids.
+ * Uses single-surface LayerCard (not Secondary/Primary layers) — the layered
+ * variant's -my-2 header is meant for large content cards and breaks 6-up alignment.
+ * @see https://kumo-ui.com/ LayerCard simple surface example
+ */
+function MetricCard({
+  label,
+  value,
+  detail,
+  badge,
+  icon,
+  detailTone = 'secondary',
+}: {
+  label: string;
+  value: React.ReactNode;
+  detail?: React.ReactNode;
+  badge?: React.ReactNode;
+  icon?: React.ReactNode;
+  detailTone?: 'secondary' | 'success' | 'error';
+}) {
   return (
-    <LayerCard className="h-full min-w-0">
-      <LayerCard.Primary className="flex h-full min-h-24 flex-col justify-between gap-2">
-        <div className="flex min-h-6 items-center justify-between gap-2">
+    <LayerCard className="flex h-full min-h-[6.5rem] min-w-0 flex-col justify-between gap-2 p-3 sm:p-4">
+      <div className="flex min-h-5 min-w-0 items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
           <Text size="xs" variant="secondary" truncate>{label}</Text>
-          {badge || icon}
         </div>
-        <Text as="span" variant="heading2">{value}</Text>
-        {detail ? <Text size="xs" variant="secondary">{detail}</Text> : <span aria-hidden="true" className="h-4" />}
-      </LayerCard.Primary>
+        {(badge || icon) ? <div className="shrink-0">{badge || icon}</div> : null}
+      </div>
+      <div className="min-w-0">
+        <Text as="span" variant="heading2" className="block break-words tabular-nums leading-tight">{value}</Text>
+      </div>
+      <div className="min-h-4 min-w-0">
+        {detail != null && detail !== ''
+          ? <Text size="xs" variant={detailTone} className="block break-words leading-snug">{detail}</Text>
+          : <span aria-hidden="true" className="block h-4" />}
+      </div>
     </LayerCard>
   );
 }
@@ -366,30 +392,46 @@ function App() {
             <Text as="h2" variant="heading3">当前状态</Text>
             <Text size="xs" variant="secondary">同步数值</Text>
           </div>
-          <Grid variant="6up" gap="sm">
-            <GridItem><MetricCard label="金币" value={formatNumber(values.gold)} detail={`今日 +${formatNumber(progress.dailyGoldGain || 0)}`} icon={selectedCourse?.rewardIconUrl ? <img src={selectedCourse.rewardIconUrl} alt="" className="size-5 object-contain" /> : undefined} /></GridItem>
-            <GridItem><MetricCard label="心情" value={formatNumber(values.feel)} /></GridItem>
-            <GridItem><MetricCard label="体力" value={formatNumber(values.hunger)} /></GridItem>
-            <GridItem><MetricCard label="清洁" value={formatNumber(values.clean)} /></GridItem>
-            <GridItem><MetricCard label="综合" value={formatNumber(values.total)} detail={`今日 +${formatNumber(progress.dailyExperienceGain || 0)}`} /></GridItem>
-            <GridItem><MetricCard label="疲劳" value={state.fatigue?.fatigued === true ? '疲劳中' : state.fatigue?.fatigued === false ? '正常' : '未知'} detail={state.fatigue?.fatigued === true ? `任务收益下降至 ${fatigueBenefitPercent ?? '--'}% · ${state.fatigue.tier} 小时档` : undefined} /></GridItem>
+          <Grid variant="6up" gap="sm" className="items-stretch">
+            <GridItem className="min-w-0"><MetricCard label="金币" value={formatNumber(values.gold)} detail={`今日 +${formatNumber(progress.dailyGoldGain || 0)}`} detailTone={Number(progress.dailyGoldGain) > 0 ? 'success' : 'secondary'} icon={selectedCourse?.rewardIconUrl ? <img src={selectedCourse.rewardIconUrl} alt="" className="size-5 object-contain" /> : undefined} /></GridItem>
+            <GridItem className="min-w-0"><MetricCard label="心情" value={formatNumber(values.feel)} /></GridItem>
+            <GridItem className="min-w-0"><MetricCard label="体力" value={formatNumber(values.hunger)} /></GridItem>
+            <GridItem className="min-w-0"><MetricCard label="清洁" value={formatNumber(values.clean)} /></GridItem>
+            <GridItem className="min-w-0"><MetricCard label="综合" value={formatNumber(values.total)} detail={`今日 +${formatNumber(progress.dailyExperienceGain || 0)}`} detailTone={Number(progress.dailyExperienceGain) > 0 ? 'success' : 'secondary'} /></GridItem>
+            <GridItem className="min-w-0"><MetricCard label="疲劳" value={state.fatigue?.fatigued === true ? '疲劳中' : state.fatigue?.fatigued === false ? '正常' : '未知'} detail={state.fatigue?.fatigued === true ? `收益 ${fatigueBenefitPercent ?? '--'}% · ${state.fatigue.tier}h` : undefined} detailTone={state.fatigue?.fatigued === true ? 'error' : 'secondary'} /></GridItem>
           </Grid>
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
             <Text as="h2" variant="heading3">成长训练</Text>
             <Badge variant="purple">当前学习：{attributeNames[targetAttribute] || '--'}（{modeLabel}）</Badge>
           </div>
-          <Grid variant="6up" gap="sm">
+          <Grid variant="6up" gap="sm" className="items-stretch">
             {(['strength', 'intelligence', 'charm'] as const).map((key) => {
               const attribute = ({ strength: 'physical', intelligence: 'culture', charm: 'art' })[key];
               const isTrainingTarget = attribute === targetAttribute;
-              const gain = isTrainingTarget ? expectedGain(expectedItem, targetAttribute) ?? 0 : 0;
+              const nextGain = isTrainingTarget ? expectedGain(expectedItem, targetAttribute) : null;
+              const baseline = Number(progress.attributeBaseline?.[key]);
+              const current = Number(values[key]) || 0;
+              const todayGain = Number.isFinite(baseline) ? Math.max(0, current - baseline) : 0;
               const label = ({ strength: '力量', intelligence: '智力', charm: '魅力' })[key];
-              return <GridItem key={key}><MetricCard label={isTrainingTarget ? `${label} · 下次训练` : label} value={isTrainingTarget ? `${gain >= 0 ? '+' : ''}${formatNumber(gain)}` : formatNumber(values[key])} detail={isTrainingTarget ? `当前 ${formatNumber(values[key])}` : '本次不训练'} badge={<Badge variant={({ strength: 'red', intelligence: 'blue', charm: 'orange' } as const)[key]}>{({ strength: '力', intelligence: '智', charm: '魅' })[key]}</Badge>} /></GridItem>;
+              const detail = isTrainingTarget && nextGain != null
+                ? `今日 +${formatNumber(todayGain)} · 下次 +${formatNumber(nextGain)}`
+                : `今日 +${formatNumber(todayGain)}`;
+              return (
+                <GridItem key={key} className="min-w-0">
+                  <MetricCard
+                    label={isTrainingTarget ? `${label} · 训练中` : label}
+                    value={formatNumber(current)}
+                    detail={detail}
+                    detailTone={todayGain > 0 ? 'success' : 'secondary'}
+                    badge={<Badge variant={({ strength: 'red', intelligence: 'blue', charm: 'orange' } as const)[key]}>{({ strength: '力', intelligence: '智', charm: '魅' })[key]}</Badge>}
+                  />
+                </GridItem>
+              );
             })}
-            <GridItem><MetricCard label="经验" value={profile.levelExperience ? `${formatNumber(profile.currentExperience)} / ${formatNumber(profile.levelExperience)}` : formatNumber(profile.currentExperience)} detail={profile.experienceRate ? `成长倍率 ×${formatNumber(profile.experienceRate, 1)}` : undefined} /></GridItem>
-            <GridItem><MetricCard label="等级" value={profile.level ? `Lv.${profile.level}` : '--'} detail={profile.levelExperience ? `升级还需 ${Math.max(0, Number(profile.levelExperience) - Number(profile.currentExperience || 0))}` : undefined} /></GridItem>
-            <GridItem><MetricCard label="今日经验" value={formatNumber(progress.dailyExperienceGain)} detail="今日累计获取" /></GridItem>
+            <GridItem className="min-w-0"><MetricCard label="经验" value={profile.levelExperience ? `${formatNumber(profile.currentExperience)} / ${formatNumber(profile.levelExperience)}` : formatNumber(profile.currentExperience)} detail={profile.experienceRate ? `成长倍率 ×${formatNumber(profile.experienceRate, 1)}` : undefined} /></GridItem>
+            <GridItem className="min-w-0"><MetricCard label="等级" value={profile.level ? `Lv.${profile.level}` : '--'} detail={profile.levelExperience ? `升级还需 ${Math.max(0, Number(profile.levelExperience) - Number(profile.currentExperience || 0))}` : undefined} /></GridItem>
+            <GridItem className="min-w-0"><MetricCard label="今日经验" value={`+${formatNumber(progress.dailyExperienceGain || 0)}`} detail="三项属性今日累计" detailTone={Number(progress.dailyExperienceGain) > 0 ? 'success' : 'secondary'} /></GridItem>
           </Grid>
         </section>
 
