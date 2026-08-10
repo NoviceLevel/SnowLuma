@@ -126,23 +126,23 @@ function MetricCard({
   detailTone?: 'secondary' | 'success' | 'error';
 }) {
   return (
-    <LayerCard className="flex h-full min-h-36 min-w-0 flex-col justify-between gap-3 p-4">
+    <LayerCard className="flex h-full min-h-[7.25rem] min-w-0 flex-col justify-between gap-2 p-3 sm:p-4">
       <div className="flex min-h-5 min-w-0 items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <Text size="sm" variant="secondary" truncate>{label}</Text>
+          <Text size="xs" variant="secondary" truncate>{label}</Text>
         </div>
         {(badge || icon) ? <div className="shrink-0">{badge || icon}</div> : null}
       </div>
-      <div className="flex min-w-0 flex-1 items-center py-1">
-        {/* Match the larger display size from the previous growth cards (beyond heading1). */}
-        <span className="block break-words font-heading text-4xl font-semibold leading-none tracking-tight text-kumo-default tabular-nums sm:text-5xl">
+      <div className="flex min-w-0 flex-1 items-center">
+        {/* Middle size: larger than heading2, smaller than the previous text-5xl experiment. */}
+        <span className="block break-words font-heading text-[1.75rem] font-semibold leading-none tracking-tight text-kumo-default tabular-nums sm:text-4xl">
           {value}
         </span>
       </div>
-      <div className="min-h-5 min-w-0">
+      <div className="min-h-4 min-w-0">
         {detail != null && detail !== ''
-          ? <Text size="sm" variant={detailTone} className="block break-words leading-snug" bold={detailTone === 'success' || detailTone === 'error'}>{detail}</Text>
-          : <span aria-hidden="true" className="block h-5" />}
+          ? <Text size="xs" variant={detailTone} className="block break-words leading-snug" bold={detailTone === 'success'}>{detail}</Text>
+          : <span aria-hidden="true" className="block h-4" />}
       </div>
     </LayerCard>
   );
