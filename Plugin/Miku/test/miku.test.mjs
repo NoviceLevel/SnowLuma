@@ -10,7 +10,6 @@ import {
   DEFAULT_CONFIG,
   OneBotHttpClient,
   ProgressStore,
-  QQPetApi,
   TaskFallbackError,
   buildCandidateList,
   compareRewardPerSecond,
@@ -23,9 +22,7 @@ import {
   isFailureDiscouraged,
   isFallbackWorthy,
   isIrrecoverableSettleError,
-  isOutdoorHistoryCompatibilityError,
   isWithinTimeWindow,
-  mergeOutdoorRecords,
   normalizeConfig,
   orderCandidatesForSmart,
   parseDurationSeconds,
@@ -395,22 +392,6 @@ describe('Miku OneBot HTTP client', () => {
 });
 
 describe('Miku QQPet protocol', () => {
-  test('uses field 100 for the outdoor history client type', async () => {
-    const api = new QQPetApi({}, 'pet-123');
-    let requestBody;
-    api.sendOidb = async (_packet, body) => {
-      requestBody = body;
-      return { body: new Uint8Array() };
-    };
-
-    assert.deepEqual(await api.queryOutdoorRecords(30, 5), []);
-    assert.ok(requestBody instanceof Uint8Array);
-    assert.ok(requestBody.includes(0xa0));
-    assert.ok(requestBody.includes(0x06));
-    assert.equal(requestBody.at(-1), 2);
-    assert.equal(requestBody.includes(0x20), false);
-  });
-
   test('projects settled telemetry into sorted local outdoor records', () => {
     const records = telemetryToOutdoorRecords([
       { status: 'settled', kind: 'work', storyId: 'work-1', settledAt: '2026-08-11T01:00:00.000Z', elapsedSeconds: 60, item: { name: '搬砖', reward: '金币 65' }, delta: { strength: 0, intelligence: 0, charm: 0 }, after: {} },
@@ -428,22 +409,7 @@ describe('Miku QQPet protocol', () => {
     assert.match(records[1].detail, /金币 65/);
   });
 
-  test('merges server and local records without duplicating a story', () => {
-    const merged = mergeOutdoorRecords(
-      [{ storyId: 'same', timestamp: 10, source: 'server' }],
-      [{ storyId: 'same', timestamp: 10, source: 'local' }, { storyId: 'local', timestamp: 20, source: 'local' }],
-      10,
-    );
-    assert.deepEqual(merged.map((record) => record.storyId), ['local', 'same']);
-    assert.equal(merged.find((record) => record.storyId === 'same').source, 'server');
-  });
-
-  test('recognizes the PC QQ appid compatibility rejection', () => {
-    assert.equal(isOutdoorHistoryCompatibilityError(new Error('[oidb] rule type not match appid')), true);
-    assert.equal(isOutdoorHistoryCompatibilityError(new Error('网络超时')), false);
-  });
-
-  test('falls back once and stops retrying a known unsupported server history command', async () => {
+  test('uses only local settled telemetry for task records', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'miku-outdoor-fallback-'));
     const store = new ProgressStore(path.join(directory, 'daily-progress.json'));
     store.recordTelemetry({
@@ -456,20 +422,8 @@ describe('Miku QQPet protocol', () => {
       after: { strength: 66 },
     });
     const controller = new AutomationController({ log: () => {} }, store);
-    let calls = 0;
-    const client = {
-      queryOutdoorRecords: async () => {
-        calls += 1;
-        throw new Error('[oidb] rule type not match appid');
-      },
-    };
-
-    assert.equal((await controller.refreshOutdoorRecords(client)).length, 1);
-    assert.equal((await controller.refreshOutdoorRecords(client)).length, 1);
-    assert.equal(calls, 1);
-    assert.equal(controller.outdoorRecordsSource, 'local');
-    assert.equal(controller.outdoorRecordsServerUnsupported, true);
-    assert.match(controller.outdoorRecordsError, /本机真实结算记录/);
+    assert.equal((await controller.refreshOutdoorRecords()).length, 1);
+    assert.equal((await controller.refreshOutdoorRecords()).length, 1);
   });
 });
 

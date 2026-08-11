@@ -653,8 +653,6 @@ const PACKETS = {
   reportEvent: ["OidbSvcTrpcTcp.0x96a6_1", 38566, 1],
   medalGallery: ["OidbSvcTrpcTcp.0x9ac3_0", 39619, 0],
   interactionHistory: ["OidbSvcTrpcTcp.0x994d_1", 39245, 1],
-  // Outdoor outing history (school/work/adventure/PK results). From OneKey 1.2.0 queryOutdoorRecords.
-  outdoorHistory: ["OidbSvcTrpcTcp.0x9876_1", 39030, 1]
 };
 function extractPacketHex(payload) {
   if (typeof payload == "string") {
@@ -974,49 +972,6 @@ class QQPetApi {
           eventType: getVarintField(fields, 6)
         }];
       }
-    });
-  }
-  async queryOutdoorRecords(limit = 20, offset = 0) {
-    const requestBody = concatBytes(
-      encodeVarintField(1, Math.max(0, Math.trunc(offset))),
-      encodeVarintField(2, Math.max(1, Math.min(50, Math.trunc(limit) || 20))),
-      encodeStringField(3, this.petId),
-      encodeVarintField(100, 2)
-    );
-    const root = parseProtobufFields((await this.sendOidb(PACKETS.outdoorHistory, requestBody)).body);
-    const readWatermark = getVarintField(root, 4);
-    return getProtobufFields(root, 1).filter(entryField => entryField.wireType === 2).flatMap(entryField => {
-      const entry = parseProtobufFields(entryField.value);
-      const storyId = getStringField(entry, 1).trim();
-      if (!storyId) return [];
-      const timestamp = getVarintField(entry, 2);
-      const resultsBytes = getBytesField(entry, 6);
-      const resultsRoot = resultsBytes.length ? parseProtobufFields(resultsBytes) : new Map();
-      const results = getProtobufFields(resultsRoot, 1).filter(item => item.wireType === 2).map(item => {
-        const fields = parseProtobufFields(item.value);
-        const rawType = getVarintField(fields, 1);
-        return {
-          type: rawType === 1 ? 2 : rawType === 2 ? 3 : rawType,
-          name: getStringField(fields, 2).trim(),
-          value: getVarintField(fields, 3),
-          rightTopDescription: getStringField(fields, 4).trim(),
-          iconUrl: getStringField(fields, 6).trim(),
-          difference: getVarintField(fields, 7),
-          isPetInfo: !!getVarintField(fields, 9),
-          petId: getStringField(fields, 10).trim()
-        };
-      });
-      return [{
-        storyId,
-        timestamp,
-        eventType: getVarintField(entry, 7),
-        grade: getVarintField(entry, 4),
-        title: getStringField(entry, 3).trim(),
-        detail: getStringField(entry, 5).trim(),
-        results,
-        unread: timestamp > readWatermark,
-        outdoorVersion: getVarintField(entry, 8)
-      }];
     });
   }
   async queryValues() {
@@ -1493,21 +1448,6 @@ function telemetryToOutdoorRecords(telemetry, limit = 30) {
   }
   return records.sort((left, right) => right.timestamp - left.timestamp).slice(0, Math.max(0, Math.trunc(limit)));
 }
-function isOutdoorHistoryCompatibilityError(error) {
-  const message = error instanceof Error ? error.message : String(error ?? "");
-  return /rule type not match appid/i.test(message);
-}
-function mergeOutdoorRecords(serverRecords, localRecords, limit = 30) {
-  const output = [];
-  const seen = new Set();
-  for (const record of [...(Array.isArray(serverRecords) ? serverRecords : []), ...(Array.isArray(localRecords) ? localRecords : [])]) {
-    const key = String(record?.storyId || `${record?.timestamp}|${record?.eventType}|${record?.title}`);
-    if (!record || seen.has(key)) continue;
-    seen.add(key);
-    output.push(record);
-  }
-  return output.sort((left, right) => Number(right.timestamp || 0) - Number(left.timestamp || 0)).slice(0, Math.max(0, Math.trunc(limit)));
-}
 function randomDelaySeconds(minMinutes, maxMinutes, random = Math.random) {
   const minSeconds = Math.max(0, Math.trunc(minMinutes * 60));
   const maxSeconds = Math.max(minSeconds, Math.trunc(maxMinutes * 60));
@@ -1664,9 +1604,6 @@ class AutomationController {
   interactionsLoadedAt = 0;
   outdoorRecords = [];
   outdoorRecordsLoadedAt = 0;
-  outdoorRecordsError = null;
-  outdoorRecordsSource = "local";
-  outdoorRecordsServerUnsupported = false;
   get running() {
     return this.active;
   }
@@ -1805,7 +1742,7 @@ class AutomationController {
       this.interactionsLoadedAt = Date.now();
     }
     if (!this.outdoorRecordsLoadedAt || Date.now() - this.outdoorRecordsLoadedAt >= 120000) {
-      await this.refreshOutdoorRecords(client);
+      await this.refreshOutdoorRecords();
     }
     const fullProfile = {
       ...profile
@@ -1813,28 +1750,8 @@ class AutomationController {
     fullProfile.medals = this.medals ?? profile.medals;
     return fullProfile;
   }
-  async refreshOutdoorRecords(client = null) {
-    const localRecords = telemetryToOutdoorRecords(this.progress.snapshot().telemetry, 30);
-    if (!this.outdoorRecordsServerUnsupported) {
-      try {
-        const api = client || await this.client();
-        const serverRecords = (await api.queryOutdoorRecords(30)).map(record => ({ ...record, source: "server" }));
-        this.outdoorRecords = mergeOutdoorRecords(serverRecords, localRecords, 30);
-        this.outdoorRecordsSource = serverRecords.length && localRecords.length ? "mixed" : serverRecords.length ? "server" : "local";
-        this.outdoorRecordsError = null;
-        this.outdoorRecordsLoadedAt = Date.now();
-        return this.outdoorRecords;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.outdoorRecordsServerUnsupported = isOutdoorHistoryCompatibilityError(error);
-        this.outdoorRecordsError = this.outdoorRecordsServerUnsupported
-          ? "当前 PC QQ 通道不支持服务器出门历史，正在显示本机真实结算记录"
-          : "服务器出门历史暂时同步失败，正在显示本机真实结算记录：" + message;
-        this.host.log("出门记录同步失败：" + message);
-      }
-    }
-    this.outdoorRecords = localRecords;
-    this.outdoorRecordsSource = "local";
+  async refreshOutdoorRecords() {
+    this.outdoorRecords = telemetryToOutdoorRecords(this.progress.snapshot().telemetry, 30);
     this.outdoorRecordsLoadedAt = Date.now();
     return this.outdoorRecords;
   }
@@ -2149,7 +2066,7 @@ class AutomationController {
           }
           this.progress.clearPending();
           this.progress.clearBlock(settleBlockKey);
-          await this.refreshOutdoorRecords(client);
+          await this.refreshOutdoorRecords();
           if (afterValues) {
             this.host.updateStatus({
               values: afterValues,
@@ -2206,9 +2123,6 @@ class AutomationController {
       profile: profile,
       interactions: this.interactions,
       outdoorRecords: this.outdoorRecords,
-      outdoorRecordsError: this.outdoorRecordsError,
-      outdoorRecordsSource: this.outdoorRecordsSource,
-      outdoorRecordsServerUnsupported: this.outdoorRecordsServerUnsupported,
       fatigue: fatigue,
       values: values,
       story: displayStory,
@@ -3282,4 +3196,4 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exitCode = 1;
   });
 }
-export { AutomationController, DEFAULT_CONFIG, OneBotHttpClient, ProgressStore, QQPetApi, QQPetPlugin, TaskFallbackError, buildCandidateList, compareEmployableFriends, compareRewardPerSecond, createApiToken, createWebServer, decideNextTask, estimateBestTaskRps, fatigueAction, hasFreeAvailableCourses, isAdventureWindowOpen, isFailureDiscouraged, isFallbackWorthy, isIrrecoverableSettleError, isOutdoorHistoryCompatibilityError, isWithinTimeWindow, mergeOutdoorRecords, normalizeConfig, orderCandidatesForSmart, parseDurationSeconds, parseFatigueStatus, parseRewardAmount, resolveStaticAssetPath, rotateSchoolAttribute, selectSchoolAttribute, selectSchoolOrWork, telemetryToOutdoorRecords, writeJsonAtomically };
+export { AutomationController, DEFAULT_CONFIG, OneBotHttpClient, ProgressStore, QQPetApi, QQPetPlugin, TaskFallbackError, buildCandidateList, compareEmployableFriends, compareRewardPerSecond, createApiToken, createWebServer, decideNextTask, estimateBestTaskRps, fatigueAction, hasFreeAvailableCourses, isAdventureWindowOpen, isFailureDiscouraged, isFallbackWorthy, isIrrecoverableSettleError, isWithinTimeWindow, normalizeConfig, orderCandidatesForSmart, parseDurationSeconds, parseFatigueStatus, parseRewardAmount, resolveStaticAssetPath, rotateSchoolAttribute, selectSchoolAttribute, selectSchoolOrWork, telemetryToOutdoorRecords, writeJsonAtomically };

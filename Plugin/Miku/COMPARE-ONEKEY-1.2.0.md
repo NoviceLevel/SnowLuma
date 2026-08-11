@@ -12,7 +12,7 @@
    - 每日次数上限、候选扫描数
 4. **快速冒险（只刷钱袋）** — 先看预告，仅「捡到金币」才开（`quickAdventureEnabled`）
 5. **连续未掉钱袋则暂停当日冒险** — `adventureMoneyBagStopEnabled` + 次数阈值
-6. ~~**出门记录**~~ — 已接入服务器 `outdoorHistory`（`0x9876_1`），换机/清本地不丢
+6. ~~**任务记录**~~ — 使用 Miku 本地真实结算遥测，不请求服务器 `outdoorHistory`
 7. **定时休息时段** — 起止时间，可跨午夜（`restPeriodEnabled` 等）
 8. **打工指定好友 QQ 列表** — 按顺序选用可上岗好友（`workFriendUins`）
 

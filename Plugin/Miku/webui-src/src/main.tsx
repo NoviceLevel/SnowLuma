@@ -348,8 +348,6 @@ function App() {
     return 'neutral' as const;
   };
   const outdoorRecords = Array.isArray(state.outdoorRecords) ? state.outdoorRecords as AnyRecord[] : [];
-  const outdoorSource = String(state.outdoorRecordsSource || 'local');
-  const outdoorSourceLabel = outdoorSource === 'server' ? '服务器记录' : outdoorSource === 'mixed' ? '服务器 + 本机' : '本机结算记录';
   const outdoorReward = (item: AnyRecord) => {
     const rewards = (item.results || [])
       .map((value: AnyRecord) => [value.name, value.difference ? `${Number(value.difference) > 0 ? '+' : ''}${value.difference}` : value.value || ''].filter(Boolean).join(' '))
@@ -357,7 +355,7 @@ function App() {
       .join(' · ');
     return [item.detail, rewards].filter(Boolean).join(' · ') || '已结算';
   };
-  // Local attribute deltas also back the outdoor table when the PC QQ channel rejects server history.
+  // Settled telemetry is the sole source for the local task-record table.
   const telemetry = (progress.telemetry || []).filter((item: AnyRecord) => item?.status === 'settled').slice(-30).reverse();
   const totalGain = telemetry.reduce((sum: number, item: AnyRecord) => sum + Object.values(item.delta || {}).reduce((value: number, delta) => value + Math.max(0, Number(delta) || 0), 0), 0);
   const telemetryReward = (item: AnyRecord) => {
@@ -576,16 +574,13 @@ function App() {
 
           <div className="flex flex-col gap-4" hidden={activeView !== 'activity'}>
           <LayerCard className="overflow-x-auto p-0">
-            <SectionHeader title="出门记录" badge={<Badge variant={outdoorSource === 'server' ? 'green' : outdoorSource === 'mixed' ? 'blue' : 'orange'}>{outdoorRecords.length} 条 · {outdoorSourceLabel}</Badge>} />
-            {state.outdoorRecordsError ? <LayerCard.Primary className="py-3">
-              <Badge variant="orange">{String(state.outdoorRecordsError)}</Badge>
-            </LayerCard.Primary> : null}
+            <SectionHeader title="任务记录" badge={<Badge variant="orange">{outdoorRecords.length} 条 · 本机结算</Badge>} />
             {outdoorRecords.length ? <Table layout="fixed">
               <colgroup><col className="w-[18%]" /><col className="w-[12%]" /><col className="w-[28%]" /><col className="w-[30%]" /><col className="w-[12%]" /></colgroup>
               <Table.Header variant="compact"><Table.Row><Table.Head>时间</Table.Head><Table.Head>类型</Table.Head><Table.Head>任务</Table.Head><Table.Head>结果</Table.Head><Table.Head>评级</Table.Head></Table.Row></Table.Header>
               <Table.Body>{outdoorRecords.map((item: AnyRecord, index: number) => <Table.Row key={`${item.storyId || item.timestamp}-${index}`}>
                 <Table.Cell><Text size="xs" variant="secondary">{Number(item.timestamp) > 0 ? new Date(Number(item.timestamp) * 1000).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '--'}</Text></Table.Cell>
-                <Table.Cell><Badge variant={outdoorTypeVariant(item.eventType)}>{outdoorTypeLabel(item.eventType)}{item.source === 'local' ? ' · 本机' : ''}{item.unread ? ' · 新' : ''}</Badge></Table.Cell>
+                <Table.Cell><Badge variant={outdoorTypeVariant(item.eventType)}>{outdoorTypeLabel(item.eventType)}</Badge></Table.Cell>
                 <Table.Cell><Text size="sm">{item.title || outdoorTypeLabel(item.eventType)}</Text></Table.Cell>
                 <Table.Cell><Text size="sm">{outdoorReward(item)}</Text></Table.Cell>
                 <Table.Cell><Text size="xs" variant="secondary">{item.grade ? `评级 ${item.grade}` : '--'}</Text></Table.Cell>
