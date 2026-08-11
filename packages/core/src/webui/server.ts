@@ -537,7 +537,10 @@ export async function initWebUI(
   }
 
   const app = new Hono();
-  const pluginManager = new PluginManager();
+  const pluginManager = new PluginManager(
+    undefined,
+    () => oneBotManager.getInstances().map((instance) => instance.uin),
+  );
   app.use('*', webuiSecurityHeaders);
   registerLoginRequestSecurity(app);
   const storageManagement = new StorageManagementService({

@@ -92,4 +92,23 @@ describe('PluginManager', () => {
     const stopped = await manager.stop('managed');
     expect(stopped).toMatchObject({ state: 'stopped', running: false, managed: false });
   });
+
+  it('shows WebUI ports only for currently online configured accounts', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'snowluma-plugin-manager-'));
+    await createPlugin(root, 'multi', {
+      id: 'multi', name: 'Multi plugin', entry: 'index.mjs', multiAccount: true,
+      webui: { host: '127.0.0.1', defaultPort: 8191, multiAccount: true },
+    });
+    await writeFile(path.join(root, 'multi', 'index.mjs'), 'setInterval(() => {}, 1000);', 'utf8');
+    await mkdir(path.join(root, '..', 'config'), { recursive: true });
+    for (const [uin, port] of [['10001', 3001], ['10002', 3002]] as const) {
+      await writeFile(path.join(root, '..', 'config', `onebot_${uin}.json`), JSON.stringify({
+        networks: { httpServers: [{ enabled: true, port }] },
+      }), 'utf8');
+    }
+    const manager = new PluginManager(root, () => ['10002']);
+
+    const [plugin] = await manager.list();
+    expect(plugin?.instances).toMatchObject([{ uin: '10002', webPort: 8191 }]);
+  });
 });

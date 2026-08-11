@@ -11,6 +11,9 @@ const defaultConfigDir = path.resolve(
 );
 const defaultPrimaryUin = process.env.QQPET_BOT_UIN?.trim() || '';
 const reportedIssues = new Set();
+let managedAccountUins = new Set(
+  (process.env.SNOWLUMA_PLUGIN_ACCOUNTS || '').split(',').filter((uin) => /^\d{5,20}$/.test(uin)),
+);
 
 function isSnowLumaManagedLaunch(
   env = process.env,
@@ -42,12 +45,17 @@ function isValidPort(value) {
   return Number.isSafeInteger(port) && port >= 1 && port <= 65535;
 }
 
-function configuredAccounts(configDir = defaultConfigDir, primaryUin = defaultPrimaryUin) {
+function configuredAccounts(
+  configDir = defaultConfigDir,
+  primaryUin = defaultPrimaryUin,
+  allowedUins = managedAccountUins,
+) {
   if (!existsSync(configDir)) return [];
   return readdirSync(configDir, { withFileTypes: true })
     .filter((item) => item.isFile() && /^onebot_\d+\.json$/.test(item.name))
     .map((item) => {
       const uin = item.name.slice('onebot_'.length, -'.json'.length);
+      if (!allowedUins.has(uin)) return null;
       const configPath = path.join(configDir, item.name);
       try {
         const config = JSON.parse(readFileSync(configPath, 'utf8'));
@@ -79,14 +87,6 @@ function configuredAccounts(configDir = defaultConfigDir, primaryUin = defaultPr
       }
       return a.uin.localeCompare(b.uin);
     });
-}
-
-function fallbackAccounts() {
-  return [{
-    uin: process.env.QQPET_BOT_UIN?.trim() || 'single',
-    url: process.env.QQPET_ONEBOT_URL?.trim() || 'http://127.0.0.1:3000',
-    token: process.env.QQPET_ONEBOT_TOKEN?.trim() || '',
-  }];
 }
 
 function accountKey(account) {
@@ -129,10 +129,7 @@ async function main() {
   let syncTimer;
 
   function desiredAccounts() {
-    const accounts = configuredAccounts();
-    if (accounts.length > 0) return accounts;
-    reportOnce('fallback', '没有可用的 SnowLuma 账号配置，使用 QQPET_ONEBOT_URL 单账号回退模式');
-    return fallbackAccounts();
+    return configuredAccounts();
   }
 
   function clearRestartTimer(record) {
@@ -275,6 +272,11 @@ async function main() {
   process.once('SIGTERM', () => void shutdown());
   process.once('SIGHUP', () => void shutdown());
   process.once('disconnect', () => void shutdown());
+  process.on('message', (message) => {
+    if (!message || message.type !== 'snowluma:accounts' || !Array.isArray(message.uins)) return;
+    managedAccountUins = new Set(message.uins.filter((uin) => typeof uin === 'string' && /^\d{5,20}$/.test(uin)));
+    void syncWorkers();
+  });
   await syncWorkers();
   syncTimer = setInterval(() => void syncWorkers(), 5000);
 }

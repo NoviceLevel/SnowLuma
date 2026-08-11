@@ -64,6 +64,7 @@ interface ManagedRecord {
   lastExitCode: number | null;
   lastError: string | null;
   lastLog: string;
+  accountSyncTimer?: NodeJS.Timeout;
 }
 
 interface PluginSettings {
@@ -93,7 +94,10 @@ export class PluginManager {
   private readonly root: string;
   private readonly settingsPath: string;
 
-  constructor(root = path.resolve(process.cwd(), 'Plugin')) {
+  constructor(
+    root = path.resolve(process.cwd(), 'Plugin'),
+    private readonly listOnlineUins: () => string[] = () => [],
+  ) {
     this.root = root;
     this.settingsPath = path.resolve(root, '..', 'config', 'plugins.json');
   }
@@ -132,10 +136,16 @@ export class PluginManager {
     child.stderr?.on('data', capture);
     child.once('error', (error) => { record.lastError = error.message; });
     child.once('exit', (code, signal) => {
+      if (record.accountSyncTimer) clearInterval(record.accountSyncTimer);
       record.lastExitCode = code;
       if (code !== 0 && !record.lastError) record.lastError = `进程退出：${code ?? signal ?? 'unknown'}`;
     });
     this.records.set(id, record);
+    if (descriptor.managerOnly) {
+      this.syncManagedAccounts(record);
+      record.accountSyncTimer = setInterval(() => this.syncManagedAccounts(record), 2000);
+      record.accountSyncTimer.unref?.();
+    }
     const result = await this.waitForStartup(descriptor, record);
     if (!result) {
       await this.stopManagedRecord(record);
@@ -271,10 +281,11 @@ export class PluginManager {
     };
     try {
       const configDir = path.resolve(this.root, '..', 'config');
+      const onlineUins = new Set(this.listOnlineUins().filter((uin) => /^\d{5,20}$/.test(uin)));
       const accounts = readdirSync(configDir)
         .flatMap((name) => {
           const uin = name.match(/^onebot_(\d+)\.json$/)?.[1];
-          if (!uin) return [];
+          if (!uin || !onlineUins.has(uin)) return [];
           try {
             const raw = JSON.parse(readFileSync(path.join(configDir, name), 'utf8')) as {
               networks?: { httpServers?: Array<{ enabled?: boolean; port?: number }> };
@@ -292,11 +303,9 @@ export class PluginManager {
       if (primary && accounts.includes(primary)) {
         accounts.sort((a, b) => a === primary ? -1 : b === primary ? 1 : a.localeCompare(b));
       }
-      return accounts.length > 0
-        ? accounts.map((uin, index) => ({ uin, index }))
-        : [{ uin: '', index: 0 }];
+      return accounts.map((uin, index) => ({ uin, index }));
     } catch {
-      return [{ uin: '', index: 0 }];
+      return [];
     }
   }
 
@@ -305,6 +314,7 @@ export class PluginManager {
     if (descriptor.managerOnly) {
       env.SNOWLUMA_PLUGIN_MANAGED = '1';
       env.SNOWLUMA_PLUGIN_ID = descriptor.id;
+      env.SNOWLUMA_PLUGIN_ACCOUNTS = this.listOnlineUins().join(',');
     }
     if (descriptor.protocol !== 'onebot-http-v11' || env.QQPET_ONEBOT_TOKEN || readEnvValue(descriptor.configPath, 'QQPET_ONEBOT_TOKEN')) return env;
     let port = 3000;
@@ -345,7 +355,8 @@ export class PluginManager {
     while (Date.now() < deadline) {
       if (record.child.exitCode !== null || record.child.killed) return null;
       const current = await this.state(descriptor);
-      if (!descriptor.webUrl || current.health || current.instances.some((instance) => instance.health)) {
+      if (!descriptor.webUrl || current.health || current.instances.some((instance) => instance.health)
+        || (descriptor.managerOnly && this.listOnlineUins().length === 0)) {
         return current;
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -354,6 +365,10 @@ export class PluginManager {
   }
 
   private async stopManagedRecord(record: ManagedRecord): Promise<void> {
+    if (record.accountSyncTimer) {
+      clearInterval(record.accountSyncTimer);
+      record.accountSyncTimer = undefined;
+    }
     const child = record.child;
     if (child.exitCode !== null || child.killed) return;
     child.kill('SIGTERM');
@@ -362,6 +377,14 @@ export class PluginManager {
     if (!(await this.waitForChildExit(child, 1000))) {
       throw new Error('插件进程停止超时');
     }
+  }
+
+  private syncManagedAccounts(record: ManagedRecord): void {
+    if (!record.child.connected || record.child.exitCode !== null || record.child.killed) return;
+    const uins = [...new Set(this.listOnlineUins().filter((uin) => /^\d{5,20}$/.test(uin)))];
+    record.child.send({ type: 'snowluma:accounts', uins }, (error) => {
+      if (error && record.child.connected) record.lastError = error.message;
+    });
   }
 
   private async forceTerminateTree(child: ChildProcess): Promise<void> {

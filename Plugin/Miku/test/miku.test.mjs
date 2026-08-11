@@ -519,9 +519,20 @@ describe('Miku account discovery', () => {
     await writeFile(path.join(directory, 'onebot_12345.json'), JSON.stringify({
       networks: { httpServers: [{ enabled: true, host: '127.0.0.1', port: 3000 }] },
     }), 'utf8');
-    const accounts = configuredAccounts(directory, '');
+    const accounts = configuredAccounts(directory, '', new Set(['12345']));
     assert.deepEqual(accounts, [{ uin: '12345', url: 'http://127.0.0.1:3000', token: '' }]);
     assert.equal(accountKey(accounts[0]), '12345|http://127.0.0.1:3000|');
+  });
+
+  test('filters configured accounts to the SnowLuma online set', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'miku-online-accounts-'));
+    for (const [uin, port] of [['10001', 3001], ['10002', 3002]]) {
+      await writeFile(path.join(directory, `onebot_${uin}.json`), JSON.stringify({
+        networks: { httpServers: [{ enabled: true, port }] },
+      }), 'utf8');
+    }
+    const accounts = configuredAccounts(directory, '', new Set(['10002']));
+    assert.deepEqual(accounts.map((account) => account.uin), ['10002']);
   });
 });
 
