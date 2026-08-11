@@ -545,6 +545,20 @@ describe('HookSession — unload', () => {
     expect(info.error).toContain('命名管道仍然存在');
   });
 
+  it('rejects unload for a reconnect-only hook without tearing down the client', async () => {
+    const ctx = makeSession({ pipeLive: true });
+    await ctx.session.load();
+    ctx.session.onPipeUp();
+    await flush();
+
+    const info = await ctx.session.unload();
+
+    expect(info.method).toBe('reconnect');
+    expect(info.status).toBe('connecting');
+    expect(info.error).toContain('没有卸载句柄');
+    expect(ctx.injector.unload).not.toHaveBeenCalled();
+  });
+
   it('forces a fresh tick before verifying so a stale snapshot does not false-flag a successful unload', async () => {
     // Reproduces the Windows-WebUI bug: PipeWatcher's cached snapshot is
     // up to 1500ms stale, so right after a successful native unload the
@@ -552,7 +566,7 @@ describe('HookSession — unload', () => {
     // even though the DLL is gone. With the fix, tickNow() refreshes
     // the snapshot first and verification correctly sees the pipe down.
     const pid = 5555;
-    let pipeLive = true; // initial cached state: pipe is live
+    let pipeLive = false;
     const tickNow = vi.fn(async () => { pipeLive = false; }); // OS poll says: gone now
 
     const session = new HookSession(pid, {

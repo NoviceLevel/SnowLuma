@@ -354,6 +354,15 @@ export class HookSession extends EventEmitter {
   private async unloadInternal(): Promise<HookProcessInfo> {
     this._error = '';
     try {
+      // A pipe discovered after a SnowLuma restart is reconnect-only: the
+      // original manual-map handle is gone, so calling unload would only
+      // tear down our client while leaving the DLL resident in QQ.
+      if (this.injected && !this.injectResult?.handle) {
+        this._error = '该 DLL 由之前的 SnowLuma 进程注入，当前没有卸载句柄；请重启 QQ 后再加载或卸载';
+        this.setStatus('connecting', this._error);
+        this.log.warn('unload rejected: PID=%d has reconnect-only hook without manual-map handle', this.pid);
+        return this.toInfo();
+      }
       const wasLoggedIn = this.loggedIn;
       this.tearDownClient();
       if (wasLoggedIn) this.emit('disconnected', true);

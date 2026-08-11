@@ -155,7 +155,8 @@ export function ProcessesPage() {
                     const refreshing = op === 'refresh';
                     const busy = op != null || proc.status === 'loading';
                     const isOnline = proc.status === 'online';
-                    const canUnload = proc.injected;
+                    const canUnload = proc.injected && proc.method !== 'reconnect';
+                    const needsRestartToUnload = proc.injected && proc.method === 'reconnect';
                     // Refresh is meaningful whenever a hook may exist (so the user
                     // can re-check the pipe and trigger a reconnect on demand).
                     const showRefresh = proc.injected || proc.status === 'connecting' || proc.status === 'disconnected';
@@ -238,25 +239,31 @@ export function ProcessesPage() {
                               )}
                             </Button>
                           )}
-                          <Button
-                            size="sm"
-                            variant={canUnload ? 'outline' : 'default'}
-                            disabled={busy}
-                            onClick={() =>
-                              setConfirm({
-                                kind: canUnload ? 'unload' : 'load',
-                                pid: proc.pid,
-                                name: proc.name || `PID ${proc.pid}`,
-                              })
-                            }
-                            className={cn(
-                              canUnload && 'text-destructive hover:bg-destructive/10 hover:text-destructive'
-                            )}
-                          >
-                            {(loading || unloading) && <Loader2 className="size-3.5 animate-spin" />}
-                            {!loading && !unloading && canUnload && <Unplug className="size-3.5" />}
-                            {canUnload ? (unloading ? '卸载中' : '卸载') : loading ? '加载中' : '加载'}
-                          </Button>
+                          {needsRestartToUnload ? (
+                            <Badge variant="warning" title="该 DLL 由之前的 SnowLuma 进程注入，当前进程没有卸载句柄；重启 QQ 后才能彻底卸载">
+                              需重启 QQ 卸载
+                            </Badge>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant={canUnload ? 'outline' : 'default'}
+                              disabled={busy}
+                              onClick={() =>
+                                setConfirm({
+                                  kind: canUnload ? 'unload' : 'load',
+                                  pid: proc.pid,
+                                  name: proc.name || `PID ${proc.pid}`,
+                                })
+                              }
+                              className={cn(
+                                canUnload && 'text-destructive hover:bg-destructive/10 hover:text-destructive'
+                              )}
+                            >
+                              {(loading || unloading) && <Loader2 className="size-3.5 animate-spin" />}
+                              {!loading && !unloading && canUnload && <Unplug className="size-3.5" />}
+                              {canUnload ? (unloading ? '卸载中' : '卸载') : loading ? '加载中' : '加载'}
+                            </Button>
+                          )}
                         </div>
                       </motion.div>
                     );
