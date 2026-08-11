@@ -585,7 +585,7 @@ function App() {
                 <Table.Cell><Text size="sm">{outdoorReward(item)}</Text></Table.Cell>
                 <Table.Cell><Text size="xs" variant="secondary">{item.grade ? `评级 ${item.grade}` : '--'}</Text></Table.Cell>
               </Table.Row>)}</Table.Body>
-            </Table> : <LayerCard.Primary><Text variant="secondary">尚无服务器出门记录（换机不丢，同步自 QQ 宠物）</Text></LayerCard.Primary>}
+            </Table> : <LayerCard.Primary><Text variant="secondary">暂无记录</Text></LayerCard.Primary>}
           </LayerCard>
 
           {telemetry.length ? <LayerCard className="overflow-x-auto p-0">
