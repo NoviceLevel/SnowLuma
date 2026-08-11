@@ -1,12 +1,12 @@
 {
   "name": "miku-qqpet",
-  "version": "1.4.1",
+  "version": "1.4.3",
   "type": "module",
   "main": "index.mjs",
   "description": "Miku QQ 宠物组件，通过 SnowLuma OneBot HTTP 运行",
   "author": "qq-pet-interface-copilot contributors",
   "license": "MIT",
-  "buildId": "miku-qqpet-1.4.1-win-x64",
+  "buildId": "miku-qqpet-1.4.3-win-x64",
   "scripts": {
     "build:webui": "vite build --config webui-src/vite.config.mjs",
     "test": "node --test test/*.test.mjs",

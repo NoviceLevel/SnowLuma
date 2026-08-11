@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "product": "Miku QQ Pet Helper OneBot",
-  "version": "1.4.1",
+  "version": "1.4.3",
   "entry": "index.mjs",
   "node": "runtime/node.exe",
   "features": [

@@ -204,8 +204,8 @@ function scheduleStatusRefresh() {
 async function act(path, message) {
   document.querySelectorAll('button').forEach((button) => { button.disabled = true; });
   try {
-    await request(path, 'POST');
-    toast(message);
+    const data = await request(path, 'POST');
+    toast(typeof message === 'function' ? message(data) : message);
     await load();
   } catch (error) {
     showError(error.message);
@@ -245,7 +245,7 @@ function bootstrap() {
   };
   $('refresh').onclick = () => void act('/refresh', '状态已刷新');
   $('once').onclick = () => {
-    if (window.confirm('执行一轮自动化检查？安全模式下不会发送写请求。')) void act('/run-once', '本轮执行完成');
+    if (window.confirm('执行一轮自动化检查？安全模式下不会发送写请求。')) void act('/run-once', (data) => data?.action ? `本轮执行完成：${data.action}` : '检查完成，当前没有可执行动作');
   };
   window.addEventListener('miku:form-change', () => { scheduleAutoSave(); });
   storyCountdownTimer = setInterval(updateDocumentTitle, 1000);

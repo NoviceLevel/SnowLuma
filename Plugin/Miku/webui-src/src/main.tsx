@@ -613,9 +613,9 @@ function App() {
             </LayerCard.Primary>
           </LayerCard> : null}
 
-          {state.interactions?.length ? <LayerCard>
-            <SectionHeader title="互动消息" badge={<Badge variant="purple">{state.interactions.length} 条</Badge>} />
-            <LayerCard.Primary className="overflow-x-auto p-0">
+          <LayerCard>
+            <SectionHeader title="互动消息" badge={<Badge variant="purple">{state.interactions?.length || 0} 条</Badge>} />
+            {state.interactions?.length ? <LayerCard.Primary className="overflow-x-auto p-0">
               <Table layout="fixed" className="[&_td]:px-4 [&_th]:px-4">
                 <colgroup><col className="w-[22%]" /><col className="w-[28%]" /><col className="w-[50%]" /></colgroup>
                 <Table.Header variant="compact"><Table.Row><Table.Head>对象</Table.Head><Table.Head>互动时间</Table.Head><Table.Head>内容</Table.Head></Table.Row></Table.Header>
@@ -625,8 +625,8 @@ function App() {
                   <Table.Cell><Text size="sm">{item.text || ''}</Text></Table.Cell>
                 </Table.Row>)}</Table.Body>
               </Table>
-            </LayerCard.Primary>
-          </LayerCard> : null}
+            </LayerCard.Primary> : <LayerCard.Primary><Text variant="secondary">暂时没有互动消息。</Text></LayerCard.Primary>}
+          </LayerCard>
 
           {catalogs.careers.length ? <LayerCard>
             <SectionHeader title="职业树" />

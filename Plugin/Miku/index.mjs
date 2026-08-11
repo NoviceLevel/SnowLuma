@@ -12,7 +12,6 @@ const DEFAULT_CONFIG_VALUES = {
   safeMode: false,
   petId: "AUTO",
   intervalSeconds: 15,
-  statusRefreshSeconds: 15,
   restPeriodEnabled: false,
   restStartTime: "00:00",
   restEndTime: "07:00",
@@ -72,7 +71,7 @@ const DEFAULT_CONFIG_VALUES = {
 };
 const DEFAULT_CONFIG = DEFAULT_CONFIG_VALUES;
 const TIME_OF_DAY_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
-const NUMERIC_CONFIG_KEYS = ["intervalSeconds", "statusRefreshSeconds", "coinThreshold", "hungerThreshold", "cleanThreshold", "foodPurchaseCount", "bathPurchaseCount", "verifyDelaySeconds", "failureCooldownSeconds", "schoolRotationEvery", "courseSubEvent", "visitMaxPerDay", "visitDelayMinSeconds", "visitDelayMaxSeconds", "otherCareDailyExperienceLimit", "visitCandidateScanLimit", "workCareerType", "workJobSubEvent", "workTimesPerDay", "workFriendScanLimit", "adventureTimesPerDay", "adventureNoMoneyBagLimit", "pkMaxPerDay", "pkDelayMinSeconds", "pkDelayMaxSeconds", "pkCandidateScanLimit", "settleRetrySeconds", "startConfirmSeconds"];
+const NUMERIC_CONFIG_KEYS = ["intervalSeconds", "coinThreshold", "hungerThreshold", "cleanThreshold", "foodPurchaseCount", "bathPurchaseCount", "verifyDelaySeconds", "failureCooldownSeconds", "schoolRotationEvery", "courseSubEvent", "visitMaxPerDay", "visitDelayMinSeconds", "visitDelayMaxSeconds", "otherCareDailyExperienceLimit", "visitCandidateScanLimit", "workCareerType", "workJobSubEvent", "workTimesPerDay", "workFriendScanLimit", "adventureTimesPerDay", "adventureNoMoneyBagLimit", "pkMaxPerDay", "pkDelayMinSeconds", "pkDelayMaxSeconds", "pkCandidateScanLimit", "settleRetrySeconds", "startConfirmSeconds"];
 function normalizeTimeOfDay(value, fallback) {
   const text = String(value ?? "").trim();
   return TIME_OF_DAY_PATTERN.test(text) ? text : fallback;
@@ -131,7 +130,6 @@ function normalizeConfig(input) {
   config.restStartTime = normalizeTimeOfDay(config.restStartTime, "00:00");
   config.restEndTime = normalizeTimeOfDay(config.restEndTime, "07:00");
   config.intervalSeconds = Math.max(3, Math.min(300, Math.trunc(config.intervalSeconds)));
-  config.statusRefreshSeconds = config.intervalSeconds;
   config.foodPurchaseCount = Math.max(1, Math.trunc(config.foodPurchaseCount));
   config.bathPurchaseCount = Math.max(1, Math.trunc(config.bathPurchaseCount));
   config.schoolRotationEvery = Math.max(1, Math.trunc(config.schoolRotationEvery));
@@ -161,7 +159,6 @@ const EMPTY_DAILY_COUNTS = {
   school: 0,
   work: 0,
   adventure: 0,
-  employed: 0,
   feed: 0,
   wash: 0,
   visitFriend: 0,
@@ -194,6 +191,7 @@ function createDailyProgress() {
     consecutiveAdventureNoMoneyBag: 0,
     attributeBaseline: null,
     dailyExperienceGain: 0,
+    otherCareExperienceGain: 0,
     goldFloor: null,
     dailyGoldGain: 0,
     telemetry: [],
@@ -243,12 +241,14 @@ class ProgressStore {
       const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
       const {
         pendingReturnVisits: pendingReturnVisits,
+        interactionsClearedBefore: ignoredInteractionsClearedBefore,
         ...rest
       } = parsed;
       const carriedCounts = {
         ...(rest.counts ?? {})
       };
       delete carriedCounts.returnVisit;
+      delete carriedCounts.employed;
       this.state = {
         ...createDailyProgress(),
         ...rest,
@@ -271,6 +271,7 @@ class ProgressStore {
           charm: Math.max(0, Number(rest.attributeBaseline.charm) || 0)
         } : null,
         dailyExperienceGain: Math.max(0, Math.trunc(Number(rest.dailyExperienceGain) || 0)),
+        otherCareExperienceGain: Math.max(0, Number(rest.otherCareExperienceGain) || 0),
         goldFloor: rest.goldFloor === null || rest.goldFloor === void 0 ? null : Math.max(0, Number(rest.goldFloor) || 0),
         dailyGoldGain: Math.max(0, Math.trunc(Number(rest.dailyGoldGain) || 0)),
         telemetry: Array.isArray(rest.telemetry) ? rest.telemetry.slice(-100) : [],
@@ -313,6 +314,7 @@ class ProgressStore {
         consecutiveAdventureNoMoneyBag: 0,
         attributeBaseline: null,
         dailyExperienceGain: 0,
+        otherCareExperienceGain: 0,
         goldFloor: null,
         dailyGoldGain: 0,
         recentFailures: []
@@ -473,6 +475,15 @@ class ProgressStore {
   setAdventureNoMoneyBagStreak(value) {
     this.state.consecutiveAdventureNoMoneyBag = Math.max(0, Math.trunc(Number(value) || 0));
     this.save();
+  }
+  recordOtherCareExperience(beforeValues, afterValues) {
+    const before = attributeSnapshot(beforeValues);
+    const after = attributeSnapshot(afterValues);
+    if (!before || !after) return 0;
+    const gain = ["strength", "intelligence", "charm"].reduce((total, key) => total + Math.max(0, after[key] - before[key]), 0);
+    this.state.otherCareExperienceGain = Math.max(0, Number(this.state.otherCareExperienceGain) || 0) + gain;
+    this.save();
+    return gain;
   }
   recordAttributes(values) {
     this.rollover();
@@ -1652,15 +1663,6 @@ function rotateSchoolAttribute(config, rotationIndex) {
   const base = ATTRIBUTE_ROTATION.indexOf(config.schoolAttribute);
   return ATTRIBUTE_ROTATION[(base + Math.max(0, Math.trunc(rotationIndex))) % ATTRIBUTE_ROTATION.length];
 }
-function selectSchoolOrWork(config, values, counts) {
-  const available = {
-    school: config.schoolEnabled && values.gold >= config.coinThreshold,
-    work: config.workEnabled && (!config.workTimesPerDay || (counts.work ?? 0) < config.workTimesPerDay)
-  };
-  // smart 无目录时与 buildCandidateList 默认顺序一致：先学后工；真正的 RPS 择优在 runOnce 中异步完成。
-  const order = config.taskPriority === "work" ? ["work", "school"] : ["school", "work"];
-  return order.find(kind => available[kind]) ?? null;
-}
 function fatigueAction(config, fatigue) {
   if (!fatigue.fatigued || !fatigue.tier) {
     return null;
@@ -1669,6 +1671,10 @@ function fatigueAction(config, fatigue) {
     return config.fatigue12HourAction;
   }
   return config.fatigue8HourAction;
+}
+function prioritizeCandidate(candidates, preferred) {
+  if (!preferred || !candidates.includes(preferred)) return candidates.slice();
+  return [preferred, ...candidates.filter(kind => kind !== preferred)];
 }
 function clearFinishedStoryDisplay(story, settled) {
   const emptyStory = {
@@ -1771,13 +1777,6 @@ function hasFreeAvailableCourses(courses) {
     return !costText || costText === "0" || /免费|free/i.test(costText);
   });
 }
-function decideNextTask(config, values, counts, now = new Date(), recentFailures = []) {
-  const candidates = buildCandidateList(config, values, counts, recentFailures, now).filter(kind => {
-    if (kind === "school" && values.gold < config.coinThreshold) return false;
-    return true;
-  });
-  return candidates[0] ?? null;
-}
 class AutomationController {
   constructor(host, progress) {
     this.host = host;
@@ -1796,6 +1795,7 @@ class AutomationController {
   medalsLoadedAt = 0;
   interactions = [];
   interactionsLoadedAt = 0;
+  interactionsLastError = "";
   outdoorRecords = [];
   outdoorRecordsLoadedAt = 0;
   get running() {
@@ -1915,9 +1915,9 @@ class AutomationController {
     }
     return api;
   }
-  async queryProfile(client) {
+  async queryProfile(client, force = false) {
     const profile = await client.queryOwnPetProfile();
-    if (!this.medals || Date.now() - this.medalsLoadedAt >= 300000) {
+    if (force || !this.medals || Date.now() - this.medalsLoadedAt >= 300000) {
       try {
         const medalGallery = await client.queryMedalGallery();
         if (medalGallery.length) {
@@ -1929,11 +1929,17 @@ class AutomationController {
         this.medalsLoadedAt = Date.now();
       }
     }
-    if (!this.interactionsLoadedAt || Date.now() - this.interactionsLoadedAt >= 300000) {
+    if (force || !this.interactionsLoadedAt || Date.now() - this.interactionsLoadedAt >= 300000) {
       try {
         this.interactions = await client.queryInteractionMessages();
-      } catch {}
-      this.interactionsLoadedAt = Date.now();
+        this.interactionsLastError = "";
+        this.interactionsLoadedAt = Date.now();
+      } catch (error) {
+        this.interactionsLastError = error instanceof Error ? error.message : String(error);
+        this.host.log("互动消息同步失败：" + this.interactionsLastError);
+        this.interactionsLoadedAt = Date.now() - 240000;
+        if (force) throw error;
+      }
     }
     if (!this.outdoorRecordsLoadedAt || Date.now() - this.outdoorRecordsLoadedAt >= 120000) {
       await this.refreshOutdoorRecords();
@@ -2143,7 +2149,7 @@ class AutomationController {
           this.progress.markTargetVisited(candidate.uin);
           this.progress.increment(candidate.kind === "friend" ? "visitFriend" : "visitStranger");
           this.host.log("自动走访" + (candidate.kind === "friend" ? "好友" : "陌生人") + this.targetLabel(candidate) + "成功");
-          const experienceLimitReached = config.otherCareDailyExperienceLimit > 0 && this.progress.snapshot().dailyExperienceGain >= config.otherCareDailyExperienceLimit;
+          const experienceLimitReached = config.otherCareDailyExperienceLimit > 0 && this.progress.snapshot().otherCareExperienceGain >= config.otherCareDailyExperienceLimit;
           if (config.visitAutoCare && experienceLimitReached) {
             this.host.log("今日经验已达到 " + config.otherCareDailyExperienceLimit + "，停止照顾别人");
           } else if (config.visitAutoCare) {
@@ -2151,16 +2157,25 @@ class AutomationController {
               const target = await client.queryOtherPet(candidate.uin, candidate.kind);
               if (target) {
                 const petValues = await client.queryOtherValues(target.petId);
-                if (petValues.hunger < config.hungerThreshold && foodInventory.biscuits > 0) {
+                const shouldFeed = petValues.hunger < config.hungerThreshold && foodInventory.biscuits > 0;
+                const bathItemId = bathInventory.bathBall > 0 ? "2" : bathInventory.soap > 0 ? "1" : null;
+                const shouldWash = petValues.clean < config.cleanThreshold && !!bathItemId;
+                const ownBefore = shouldFeed || shouldWash ? await client.queryValues() : null;
+                if (shouldFeed) {
                   await client.feedOther(target.uin, target.petId);
                   this.progress.increment("careOther");
                   this.host.log("已自动喂养走访对象");
                 }
-                const bathItemId = bathInventory.bathBall > 0 ? "2" : bathInventory.soap > 0 ? "1" : null;
-                if (petValues.clean < config.cleanThreshold && bathItemId) {
+                if (shouldWash && bathItemId) {
                   await client.washOther(target.uin, bathItemId);
                   this.progress.increment("careOther");
                   this.host.log("已自动清洁走访对象");
+                }
+                if (ownBefore) {
+                  await delaySeconds(config.verifyDelaySeconds);
+                  const ownAfter = await client.queryValues();
+                  const gained = this.progress.recordOtherCareExperience(ownBefore, ownAfter);
+                  this.host.log("照顾别人经验记录：+" + gained);
                 }
               }
             } catch (error) {
@@ -2439,6 +2454,10 @@ class AutomationController {
       updatedAt: new Date().toISOString(),
       profile: profile,
       interactions: this.interactions,
+      interactionsSync: {
+        updatedAt: this.interactionsLoadedAt || null,
+        error: this.interactionsLastError
+      },
       outdoorRecords: this.outdoorRecords,
       fatigue: fatigue,
       values: values,
@@ -2458,7 +2477,7 @@ class AutomationController {
       this.busy = true;
       try {
         const api = await this.client();
-        const [profile, petValues, story, foodInventory, bathInventory] = await Promise.all([this.queryProfile(api), api.queryValues(), api.queryStory(), api.queryFoodInventory(), api.queryBathInventory()]);
+        const [profile, petValues, story, foodInventory, bathInventory] = await Promise.all([this.queryProfile(api, true), api.queryValues(), api.queryStory(), api.queryFoodInventory(), api.queryBathInventory()]);
         const fatigue = await api.queryFatigueStatus();
         this.progress.recordAttributes(petValues);
         this.publish(profile, fatigue, petValues, story, foodInventory, bathInventory);
@@ -2564,7 +2583,7 @@ class AutomationController {
   }
   async runOnce() {
     if (this.busy) {
-      return null;
+      throw new QQPetError("当前已有请求执行中，请稍后再试", "busy");
     }
     this.busy = true;
     try {
@@ -2601,33 +2620,40 @@ class AutomationController {
         this.lastNextCheckHint = "idle";
         return "rest_period";
       }
+      const auxiliaryActions = [];
       if (config.careEnabled && values.hunger < config.hungerThreshold && !this.progress.activeBlock("feed") && !(await this.blocked(config, "喂食"))) {
         try {
           if (foodInventory.biscuits <= 0) {
             if (!config.autoBuySupplies) {
               this.progress.setBlock("feed", "饼干不足且自动购买已关闭", config.failureCooldownSeconds);
-              return "feed_unavailable";
+              this.host.log("自动喂食跳过：饼干不足且自动购买已关闭");
+            } else {
+              await api.buyFood(config.foodPurchaseCount);
+              foodInventory = await api.queryFoodInventory();
+              if (foodInventory.biscuits <= 0) {
+                throw new QQPetError("购买饼干后库存仍为空");
+              }
             }
-            await api.buyFood(config.foodPurchaseCount);
+          }
+          if (foodInventory.biscuits > 0) {
+            await api.feed();
+            await delaySeconds(config.verifyDelaySeconds);
+            const afterValues = await api.queryValues();
+            if (afterValues.hunger <= values.hunger) {
+              throw new QQPetError("喂食后体力未增加");
+            }
+            this.progress.increment("feed");
+            this.progress.clearBlock("feed");
+            this.host.log("自动喂食成功：" + values.hunger.toFixed(0) + "→" + afterValues.hunger.toFixed(0));
+            values = afterValues;
             foodInventory = await api.queryFoodInventory();
-            if (foodInventory.biscuits <= 0) {
-              throw new QQPetError("购买饼干后库存仍为空");
-            }
+            auxiliaryActions.push("feed");
           }
-          await api.feed();
-          await delaySeconds(config.verifyDelaySeconds);
-          const afterValues = await api.queryValues();
-          if (afterValues.hunger <= values.hunger) {
-            throw new QQPetError("喂食后体力未增加");
-          }
-          this.progress.increment("feed");
-          this.progress.clearBlock("feed");
-          this.host.log("自动喂食成功：" + values.hunger.toFixed(0) + "→" + afterValues.hunger.toFixed(0));
         } catch (error) {
-          this.progress.setBlock("feed", error instanceof Error ? error.message : String(error), config.failureCooldownSeconds);
-          throw error;
+          const message = error instanceof Error ? error.message : String(error);
+          this.progress.setBlock("feed", message, config.failureCooldownSeconds);
+          this.host.log("自动喂食失败，本轮继续检查其他动作：" + message);
         }
-        return "feed";
       }
       if (config.careEnabled && values.clean < config.cleanThreshold && !this.progress.activeBlock("wash") && !(await this.blocked(config, "洗澡"))) {
         try {
@@ -2635,41 +2661,49 @@ class AutomationController {
           if ((bathItemId === "2" ? bathInventory.bathBall : bathInventory.soap) <= 0) {
             if (!config.autoBuySupplies) {
               this.progress.setBlock("wash", "洗护用品不足且自动购买已关闭", config.failureCooldownSeconds);
-              return "wash_unavailable";
+              this.host.log("自动洗澡跳过：洗护用品不足且自动购买已关闭");
+              bathItemId = bathInventory.soap > 0 ? "1" : "2";
+            } else {
+              bathItemId = "2";
+              const bathPurchase = await api.buyBathItem(bathItemId, config.bathPurchaseCount);
+              if (!bathPurchase.succeeded) {
+                throw new QQPetError("购买洗护道具失败：" + (bathPurchase.result ? "result=" + bathPurchase.result : "未返回订单"));
+              }
+              bathInventory = await api.queryBathInventory();
+              if ((bathItemId === "2" ? bathInventory.bathBall : bathInventory.soap) <= 0) {
+                throw new QQPetError("购买洗护道具后库存仍为空");
+              }
             }
-            bathItemId = "2";
-            const bathPurchase = await api.buyBathItem(bathItemId, config.bathPurchaseCount);
-            if (!bathPurchase.succeeded) {
-              throw new QQPetError("购买洗护道具失败：" + (bathPurchase.result ? "result=" + bathPurchase.result : "未返回订单"));
+          }
+          if ((bathItemId === "2" ? bathInventory.bathBall : bathInventory.soap) > 0) {
+            await api.useBathItem(bathItemId);
+            await delaySeconds(config.verifyDelaySeconds);
+            const afterValues = await api.queryValues();
+            if (afterValues.clean <= values.clean) {
+              throw new QQPetError("洗澡后清洁值未增加");
             }
+            this.progress.increment("wash");
+            this.progress.clearBlock("wash");
+            this.host.log("自动洗澡成功：" + values.clean.toFixed(0) + "→" + afterValues.clean.toFixed(0));
+            values = afterValues;
             bathInventory = await api.queryBathInventory();
-            if ((bathItemId === "2" ? bathInventory.bathBall : bathInventory.soap) <= 0) {
-              throw new QQPetError("购买洗护道具后库存仍为空");
-            }
+            auxiliaryActions.push("wash");
           }
-          await api.useBathItem(bathItemId);
-          await delaySeconds(config.verifyDelaySeconds);
-          const afterValues = await api.queryValues();
-          if (afterValues.clean <= values.clean) {
-            throw new QQPetError("洗澡后清洁值未增加");
-          }
-          this.progress.increment("wash");
-          this.progress.clearBlock("wash");
-          this.host.log("自动洗澡成功：" + values.clean.toFixed(0) + "→" + afterValues.clean.toFixed(0));
         } catch (error) {
-          this.progress.setBlock("wash", error instanceof Error ? error.message : String(error), config.failureCooldownSeconds);
-          throw error;
+          const message = error instanceof Error ? error.message : String(error);
+          this.progress.setBlock("wash", message, config.failureCooldownSeconds);
+          this.host.log("自动洗澡失败，本轮继续检查其他动作：" + message);
         }
-        return "wash";
       }
       if (await this.maybePk(api, config)) {
         this.host.updateStatus({ progress: this.progress.snapshot() });
+        auxiliaryActions.push("pk");
       }
       if (await this.maybeVisit(api, config, foodInventory, bathInventory)) {
-        return "visit";
+        auxiliaryActions.push("visit");
       }
       if (await this.handleStory(api, config, story)) {
-        return "story";
+        return auxiliaryActions.length ? auxiliaryActions.join("+") + "+story" : "story";
       }
       const forcedAction = fatigueAction(config, fatigue);
       if (forcedAction === "rest") {
@@ -2681,20 +2715,12 @@ class AutomationController {
         this.lastNextCheckHint = "idle";
         return "fatigue_rest";
       }
-      if (forcedAction) {
-        const candidates = [forcedAction];
-        if (await this.blocked(config, forcedAction === "school" ? "学习" : forcedAction === "work" ? "打工" : "冒险")) {
-          return forcedAction;
-        }
-        const started = await this.startTaskByKind(api, config, values, forcedAction);
-        return started ? forcedAction : "adventure_refresh";
-      }
       const snapshot = this.progress.snapshot();
       const candidates = buildCandidateList(config, values, snapshot.counts, snapshot.recentFailures, new Date(), snapshot);
       if (!candidates.length) {
-        this.host.updateStatus({ activity: "空闲：今日任务已完成" });
+        this.host.updateStatus({ activity: auxiliaryActions.length ? "辅助动作已完成：" + auxiliaryActions.join("、") : "空闲：今日任务已完成" });
         this.lastNextCheckHint = "idle";
-        return null;
+        return auxiliaryActions.length ? auxiliaryActions.join("+") : null;
       }
       let freeCoursesAvailable = false;
       if (values.gold < config.coinThreshold && candidates.includes("school")) {
@@ -2708,9 +2734,9 @@ class AutomationController {
         return true;
       });
       if (!effectiveCandidates.length) {
-        this.host.updateStatus({ activity: "空闲：金币不足且无免费课程" });
+        this.host.updateStatus({ activity: auxiliaryActions.length ? "辅助动作已完成：" + auxiliaryActions.join("、") : "空闲：金币不足且无免费课程" });
         this.lastNextCheckHint = "idle";
-        return null;
+        return auxiliaryActions.length ? auxiliaryActions.join("+") : null;
       }
       let orderedCandidates = effectiveCandidates.slice();
       const schoolWorkCandidates = effectiveCandidates.filter(kind => kind === "school" || kind === "work");
@@ -2719,6 +2745,12 @@ class AutomationController {
           const preferred = await estimateBestTaskRps(api, config, schoolWorkCandidates);
           orderedCandidates = orderCandidatesForSmart(effectiveCandidates, preferred);
         } catch {}
+      }
+      if (forcedAction) {
+        orderedCandidates = prioritizeCandidate(orderedCandidates, forcedAction);
+        if (!orderedCandidates.includes(forcedAction)) {
+          this.host.log("疲劳策略“" + forcedAction + "”当前不满足功能开关、时段或每日次数限制，按可用任务继续");
+        }
       }
       const maxAttempts = Math.min(2, orderedCandidates.length);
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -2729,7 +2761,7 @@ class AutomationController {
         }
         try {
           const started = await this.startTaskByKind(api, config, values, candidate);
-          if (started) return candidate;
+          if (started) return auxiliaryActions.length ? auxiliaryActions.join("+") + "+" + candidate : candidate;
         } catch (error) {
           if (!isFallbackWorthy(error)) {
             throw error;
@@ -2742,7 +2774,7 @@ class AutomationController {
           }
         }
       }
-      return null;
+      return auxiliaryActions.length ? auxiliaryActions.join("+") : null;
     } finally {
       this.host.updateStatus({
         progress: this.progress.snapshot()
@@ -2772,6 +2804,7 @@ const INITIAL_STATUS = {
   values: null,
   profile: null,
   interactions: [],
+  interactionsSync: null,
   fatigue: null,
   story: null,
   inventory: null,
@@ -3342,14 +3375,7 @@ function createWebServer(plugin, options) {
         return;
       }
       if (method === "POST" && url.pathname === "/api/run-once") {
-        const actionResult = await plugin.scheduler?.runOnce();
-        if (actionResult === null) {
-          sendJson(response, 409, {
-            code: -1,
-            message: "当前已有请求执行中，请稍后再试"
-          });
-          return;
-        }
+        const actionResult = await plugin.scheduler?.runOnce() ?? null;
         sendJson(response, 200, {
           code: 0,
           data: {
@@ -3392,7 +3418,7 @@ function createWebServer(plugin, options) {
       sendJson(response, 404, notFoundBody);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      sendJson(response, message === "请求体过大" ? 413 : 500, {
+      sendJson(response, error instanceof QQPetError && error.code === "busy" ? 409 : message === "请求体过大" ? 413 : 500, {
         code: -1,
         message: message
       });
@@ -3546,4 +3572,4 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exitCode = 1;
   });
 }
-export { AutomationController, DEFAULT_CONFIG, OneBotHttpClient, ProgressStore, QQPetApi, QQPetError, QQPetPlugin, TaskFallbackError, buildCandidateList, compareEmployableFriends, compareRewardPerSecond, createApiToken, createWebServer, decideNextTask, estimateBestTaskRps, fatigueAction, hasFreeAvailableCourses, isAdventureWindowOpen, isFailureDiscouraged, isFallbackWorthy, isIrrecoverableSettleError, isRestPeriodActive, isWithinTimeWindow, normalizeConfig, orderCandidatesForSmart, parseDurationSeconds, parseFatigueStatus, parseRewardAmount, resolveStaticAssetPath, rotateSchoolAttribute, selectSchoolAttribute, selectSchoolOrWork, shouldPauseAdventureForNoMoneyBag, telemetryToOutdoorRecords, updateAdventureMoneyBagStreak, writeJsonAtomically };
+export { AutomationController, DEFAULT_CONFIG, OneBotHttpClient, ProgressStore, QQPetApi, QQPetError, QQPetPlugin, TaskFallbackError, buildCandidateList, compareEmployableFriends, compareRewardPerSecond, createApiToken, createWebServer, estimateBestTaskRps, fatigueAction, hasFreeAvailableCourses, isAdventureWindowOpen, isFailureDiscouraged, isFallbackWorthy, isIrrecoverableSettleError, isRestPeriodActive, isWithinTimeWindow, normalizeConfig, orderCandidatesForSmart, parseDurationSeconds, parseFatigueStatus, parseRewardAmount, prioritizeCandidate, resolveStaticAssetPath, rotateSchoolAttribute, selectSchoolAttribute, shouldPauseAdventureForNoMoneyBag, telemetryToOutdoorRecords, updateAdventureMoneyBagStreak, writeJsonAtomically };

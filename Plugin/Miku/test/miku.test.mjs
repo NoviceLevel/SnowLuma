@@ -15,7 +15,6 @@ import {
   buildCandidateList,
   compareRewardPerSecond,
   createWebServer,
-  decideNextTask,
   estimateBestTaskRps,
   fatigueAction,
   hasFreeAvailableCourses,
@@ -30,10 +29,10 @@ import {
   parseDurationSeconds,
   parseFatigueStatus,
   parseRewardAmount,
+  prioritizeCandidate,
   resolveStaticAssetPath,
   rotateSchoolAttribute,
   selectSchoolAttribute,
-  selectSchoolOrWork,
   telemetryToOutdoorRecords,
   updateAdventureMoneyBagStreak,
 } from '../index.mjs';
@@ -108,6 +107,15 @@ describe('Miku configuration and persistence', () => {
     assert.equal(store.snapshot().pending, null);
   });
 
+  test('drops removed legacy progress fields', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'miku-legacy-progress-'));
+    const filePath = path.join(directory, 'daily-progress.json');
+    await writeFile(filePath, JSON.stringify({ interactionsClearedBefore: 1786386000123, counts: { employed: 3 } }), 'utf8');
+    const snapshot = new ProgressStore(filePath).snapshot();
+    assert.equal('interactionsClearedBefore' in snapshot, false);
+    assert.equal('employed' in snapshot.counts, false);
+  });
+
   test('backs up corrupted progress before resetting it', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'miku-progress-'));
     const filePath = path.join(directory, 'daily-progress.json');
@@ -140,6 +148,58 @@ describe('Miku configuration and persistence', () => {
     }
     assert.equal(store.snapshot().telemetry.length, 100);
     assert.equal(store.snapshot().telemetry[0].index, 5);
+  });
+
+  test('tracks only measured experience gained from caring for others', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'miku-other-care-'));
+    const store = new ProgressStore(path.join(directory, 'daily-progress.json'));
+    store.recordAttributes({ strength: 10, intelligence: 10, charm: 10, gold: 0 });
+    store.recordAttributes({ strength: 20, intelligence: 10, charm: 10, gold: 0 });
+    assert.equal(store.snapshot().dailyExperienceGain, 10);
+    assert.equal(store.snapshot().otherCareExperienceGain, 0);
+    assert.equal(store.recordOtherCareExperience(
+      { strength: 20, intelligence: 10, charm: 10 },
+      { strength: 22, intelligence: 11, charm: 10 },
+    ), 3);
+    assert.equal(store.snapshot().otherCareExperienceGain, 3);
+  });
+
+  test('continues to a task after a care action fails', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'miku-care-continue-'));
+    const store = new ProgressStore(path.join(directory, 'daily-progress.json'));
+    const config = {
+      ...DEFAULT_CONFIG,
+      careEnabled: true,
+      hungerThreshold: 80,
+      schoolEnabled: false,
+      workEnabled: true,
+      adventureEnabled: false,
+      visitEnabled: false,
+      pkEnabled: false,
+    };
+    const host = {
+      getConfig: () => config,
+      log: () => {},
+      updateStatus: () => {},
+      status: {},
+    };
+    const controller = new AutomationController(host, store);
+    const api = {
+      queryValues: async () => ({ hunger: 50, clean: 100, feel: 100, gold: 100, strength: 1, intelligence: 1, charm: 1 }),
+      queryStory: async () => ({ storyId: '', finished: false, remainingSeconds: 0 }),
+      queryFoodInventory: async () => ({ biscuits: 1, shrimp: 0 }),
+      queryBathInventory: async () => ({ soap: 0, bathBall: 0 }),
+      queryFatigueStatus: async () => ({ fatigued: false, tier: 0 }),
+      feed: async () => { throw new Error('feed failed'); },
+    };
+    controller.client = async () => api;
+    controller.queryProfile = async () => ({ name: 'test' });
+    controller.publish = () => {};
+    let startedKind = '';
+    controller.startTaskByKind = async (_api, _config, _values, kind) => { startedKind = kind; return true; };
+    assert.equal(await controller.runOnce(), 'work');
+    assert.equal(startedKind, 'work');
+    assert.match(store.snapshot().careBlocks.feed.reason, /feed failed/);
   });
 });
 
@@ -183,19 +243,9 @@ describe('Miku decision helpers', () => {
     assert.equal(fatigueAction(config, { fatigued: false, tier: 0 }), null);
   });
 
-  test('selects school or work by priority and limits', () => {
-    const base = {
-      ...DEFAULT_CONFIG,
-      schoolEnabled: true,
-      workEnabled: true,
-      coinThreshold: 10,
-      workTimesPerDay: 2,
-      taskPriority: 'school',
-    };
-    assert.equal(selectSchoolOrWork(base, { gold: 50 }, { work: 0 }), 'school');
-    assert.equal(selectSchoolOrWork(base, { gold: 5 }, { work: 0 }), 'work');
-    assert.equal(selectSchoolOrWork({ ...base, taskPriority: 'work' }, { gold: 50 }, { work: 0 }), 'work');
-    assert.equal(selectSchoolOrWork(base, { gold: 5 }, { work: 2 }), null);
+  test('fatigue preference only reorders currently legal candidates', () => {
+    assert.deepEqual(prioritizeCandidate(['school', 'work'], 'work'), ['work', 'school']);
+    assert.deepEqual(prioritizeCandidate(['school', 'work'], 'adventure'), ['school', 'work']);
   });
 
   test('opens adventure only inside the configured window', () => {
@@ -215,9 +265,9 @@ describe('Miku decision helpers', () => {
     const afternoon = new Date('2026-08-10T15:00:00');
     assert.equal(isAdventureWindowOpen(config, evening), true);
     assert.equal(isAdventureWindowOpen(config, afternoon), false);
-    assert.equal(decideNextTask(config, { gold: 100 }, { adventure: 0, work: 0 }, evening, []), 'adventure');
-    assert.equal(decideNextTask(config, { gold: 100 }, { adventure: 3, work: 0 }, evening, []), 'school');
-    assert.equal(decideNextTask(config, { gold: 100 }, { adventure: 0, work: 0 }, afternoon, []), 'school');
+    assert.equal(buildCandidateList(config, { gold: 100 }, { adventure: 0, work: 0 }, [], evening)[0], 'adventure');
+    assert.equal(buildCandidateList(config, { gold: 100 }, { adventure: 3, work: 0 }, [], evening)[0], 'school');
+    assert.equal(buildCandidateList(config, { gold: 100 }, { adventure: 0, work: 0 }, [], afternoon)[0], 'school');
   });
 
   test('recognizes irrecoverable settle errors', () => {
@@ -362,23 +412,6 @@ describe('Miku decision helpers', () => {
     assert.equal(await estimateBestTaskRps(api, { ...DEFAULT_CONFIG, schoolEnabled: true, workEnabled: true }, ['work']), 'work');
   });
 
-  test('decideNextTask uses candidate list and respects coin threshold', () => {
-    const evening = new Date('2026-08-10T21:00:00');
-    const base = {
-      ...DEFAULT_CONFIG,
-      schoolEnabled: true,
-      workEnabled: true,
-      adventureEnabled: true,
-      adventureStartTime: '20:00',
-      adventureEndTime: '22:00',
-      adventureTimesPerDay: 3,
-      coinThreshold: 50,
-      taskPriority: 'smart',
-    };
-    assert.equal(decideNextTask(base, { gold: 100 }, { adventure: 0, work: 0 }, evening, []), 'adventure');
-    assert.equal(decideNextTask({ ...base, adventureEnabled: false }, { gold: 10 }, { adventure: 0, work: 0 }, evening, []), 'work');
-    assert.equal(decideNextTask({ ...base, adventureEnabled: false, workEnabled: false }, { gold: 10 }, { adventure: 0, work: 0 }, evening, []), null);
-  });
 });
 
 describe('Miku OneBot HTTP client', () => {
@@ -489,8 +522,9 @@ describe('Miku Web API', () => {
     snapshot: () => ({ connected: true }),
     getConfig: () => ({ safeMode: true }),
     updateConfig: () => {},
+    runOnceImpl: async () => 'noop',
     scheduler: {
-      runOnce: async () => 'noop',
+      runOnce: async () => plugin.runOnceImpl(),
       refreshReadonly: async () => {},
       stopAndWait: async () => true,
       start: () => true,
@@ -530,5 +564,23 @@ describe('Miku Web API', () => {
     const body = await readFile(path.join(pluginDir, 'package.json'), 'utf8');
     assert.match(body, /miku-qqpet/);
     assert.equal(resolveStaticAssetPath(path.join(pluginDir, 'webui'), 'app.js').endsWith('app.js'), true);
+  });
+
+  test('distinguishes an idle run from a busy run', async () => {
+    plugin.runOnceImpl = async () => null;
+    const idle = await fetch(`${baseUrl}/api/run-once`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer test-token' },
+    });
+    assert.equal(idle.status, 200);
+    assert.equal((await idle.json()).data.action, null);
+
+    plugin.runOnceImpl = async () => { throw new QQPetError('busy', 'busy'); };
+    const busy = await fetch(`${baseUrl}/api/run-once`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer test-token' },
+    });
+    assert.equal(busy.status, 409);
+    plugin.runOnceImpl = async () => 'noop';
   });
 });

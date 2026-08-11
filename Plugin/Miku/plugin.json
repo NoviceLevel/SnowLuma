@@ -3,7 +3,7 @@
   "id": "miku",
   "name": "Miku",
   "displayName": "Miku QQ 宠物",
-  "version": "1.4.1",
+  "version": "1.4.3",
   "entry": "multi.mjs",
   "launcher": "start.bat",
   "runtime": "node",
