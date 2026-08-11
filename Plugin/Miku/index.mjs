@@ -1595,6 +1595,7 @@ class AutomationController {
   interactionsLoadedAt = 0;
   outdoorRecords = [];
   outdoorRecordsLoadedAt = 0;
+  outdoorRecordsError = null;
   get running() {
     return this.active;
   }
@@ -1735,7 +1736,11 @@ class AutomationController {
     if (!this.outdoorRecordsLoadedAt || Date.now() - this.outdoorRecordsLoadedAt >= 120000) {
       try {
         this.outdoorRecords = await client.queryOutdoorRecords(30);
-      } catch {}
+        this.outdoorRecordsError = null;
+      } catch (error) {
+        this.outdoorRecordsError = error instanceof Error ? error.message : String(error);
+        this.host.log("出门记录同步失败：" + this.outdoorRecordsError);
+      }
       this.outdoorRecordsLoadedAt = Date.now();
     }
     const fullProfile = {
@@ -1748,9 +1753,11 @@ class AutomationController {
     try {
       const api = client || await this.client();
       this.outdoorRecords = await api.queryOutdoorRecords(30);
+      this.outdoorRecordsError = null;
       this.outdoorRecordsLoadedAt = Date.now();
     } catch (error) {
-      this.host.log("出门记录同步失败：" + (error instanceof Error ? error.message : String(error)));
+      this.outdoorRecordsError = error instanceof Error ? error.message : String(error);
+      this.host.log("出门记录同步失败：" + this.outdoorRecordsError);
     }
     return this.outdoorRecords;
   }
@@ -2122,6 +2129,7 @@ class AutomationController {
       profile: profile,
       interactions: this.interactions,
       outdoorRecords: this.outdoorRecords,
+      outdoorRecordsError: this.outdoorRecordsError,
       fatigue: fatigue,
       values: values,
       story: displayStory,
