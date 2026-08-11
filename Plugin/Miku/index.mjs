@@ -1434,7 +1434,6 @@ function telemetryToOutdoorRecords(telemetry, limit = 30) {
       storyId: storyId || `local-${settledAt}-${records.length}`,
       timestamp: Math.floor(settledAt / 1000),
       eventType: telemetryEventType(entry.kind),
-      grade: 0,
       title: String(entry.item?.name || ({ school: "学习", work: "打工", adventure: "冒险" }[entry.kind] ?? "出门任务")),
       detail: [
         entry.elapsedSeconds == null ? "本机结算记录" : `实际耗时 ${Math.max(0, Math.trunc(Number(entry.elapsedSeconds) || 0))} 秒`,

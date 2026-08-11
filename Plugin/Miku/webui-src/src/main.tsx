@@ -576,14 +576,13 @@ function App() {
           <LayerCard className="overflow-x-auto p-0">
             <SectionHeader title="任务记录" badge={<Badge variant="orange">{outdoorRecords.length} 条 · 本机结算</Badge>} />
             {outdoorRecords.length ? <Table layout="fixed">
-              <colgroup><col className="w-[18%]" /><col className="w-[12%]" /><col className="w-[28%]" /><col className="w-[30%]" /><col className="w-[12%]" /></colgroup>
-              <Table.Header variant="compact"><Table.Row><Table.Head>时间</Table.Head><Table.Head>类型</Table.Head><Table.Head>任务</Table.Head><Table.Head>结果</Table.Head><Table.Head>评级</Table.Head></Table.Row></Table.Header>
+              <colgroup><col className="w-[20%]" /><col className="w-[14%]" /><col className="w-[28%]" /><col className="w-[38%]" /></colgroup>
+              <Table.Header variant="compact"><Table.Row><Table.Head>时间</Table.Head><Table.Head>类型</Table.Head><Table.Head>任务</Table.Head><Table.Head>结果</Table.Head></Table.Row></Table.Header>
               <Table.Body>{outdoorRecords.map((item: AnyRecord, index: number) => <Table.Row key={`${item.storyId || item.timestamp}-${index}`}>
                 <Table.Cell><Text size="xs" variant="secondary">{Number(item.timestamp) > 0 ? new Date(Number(item.timestamp) * 1000).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '--'}</Text></Table.Cell>
                 <Table.Cell><Badge variant={outdoorTypeVariant(item.eventType)}>{outdoorTypeLabel(item.eventType)}</Badge></Table.Cell>
                 <Table.Cell><Text size="sm">{item.title || outdoorTypeLabel(item.eventType)}</Text></Table.Cell>
                 <Table.Cell><Text size="sm">{outdoorReward(item)}</Text></Table.Cell>
-                <Table.Cell><Text size="xs" variant="secondary">{item.grade ? `评级 ${item.grade}` : '--'}</Text></Table.Cell>
               </Table.Row>)}</Table.Body>
             </Table> : <LayerCard.Primary>
               <Text variant="secondary">暂无记录</Text>
