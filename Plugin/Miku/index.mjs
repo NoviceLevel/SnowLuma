@@ -3437,6 +3437,9 @@ function parsePort(envName, defaultPort, allowZero = false) {
 function isDesktopMode() {
   return ["1", "true", "yes"].includes((process.env.QQPET_DESKTOP_MODE ?? "").trim().toLowerCase());
 }
+function isSnowLumaManagedWorker(env = process.env, hasIpc = typeof process.send === "function" && process.connected) {
+  return env.SNOWLUMA_PLUGIN_WORKER === "1" && env.SNOWLUMA_PLUGIN_ID === "miku" && hasIpc;
+}
 function sendDesktopEvent(event) {
   if (isDesktopMode()) {
     process.stdout.write("QQPET_DESKTOP_EVENT " + JSON.stringify(event) + "\n");
@@ -3450,6 +3453,9 @@ function normalizeWebHost(host) {
   return normalizedHost;
 }
 async function main() {
+  if (!isSnowLumaManagedWorker()) {
+    throw new Error("Miku 必须从 SnowLuma 插件页面启动，禁止直接运行 index.mjs");
+  }
   const oneBotUrl = process.env.QQPET_ONEBOT_URL?.trim() || "http://127.0.0.1:3000";
   const requestedRuntime = process.env.QQPET_RUNTIME?.trim().toLowerCase() || "auto";
   if (!["auto", "napcat", "snowluma"].includes(requestedRuntime)) {
@@ -3564,6 +3570,9 @@ async function main() {
   process.once("SIGTERM", () => {
     shutdown().then(() => process.exit(0));
   });
+  process.once("disconnect", () => {
+    shutdown().then(() => process.exit(0));
+  });
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch(error => {
@@ -3572,4 +3581,4 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exitCode = 1;
   });
 }
-export { AutomationController, DEFAULT_CONFIG, OneBotHttpClient, ProgressStore, QQPetApi, QQPetError, QQPetPlugin, TaskFallbackError, buildCandidateList, compareEmployableFriends, compareRewardPerSecond, createApiToken, createWebServer, estimateBestTaskRps, fatigueAction, hasFreeAvailableCourses, isAdventureWindowOpen, isFailureDiscouraged, isFallbackWorthy, isIrrecoverableSettleError, isRestPeriodActive, isWithinTimeWindow, normalizeConfig, orderCandidatesForSmart, parseDurationSeconds, parseFatigueStatus, parseRewardAmount, prioritizeCandidate, resolveStaticAssetPath, rotateSchoolAttribute, selectSchoolAttribute, shouldPauseAdventureForNoMoneyBag, telemetryToOutdoorRecords, updateAdventureMoneyBagStreak, writeJsonAtomically };
+export { AutomationController, DEFAULT_CONFIG, OneBotHttpClient, ProgressStore, QQPetApi, QQPetError, QQPetPlugin, TaskFallbackError, buildCandidateList, compareEmployableFriends, compareRewardPerSecond, createApiToken, createWebServer, estimateBestTaskRps, fatigueAction, hasFreeAvailableCourses, isAdventureWindowOpen, isFailureDiscouraged, isFallbackWorthy, isIrrecoverableSettleError, isRestPeriodActive, isSnowLumaManagedWorker, isWithinTimeWindow, normalizeConfig, orderCandidatesForSmart, parseDurationSeconds, parseFatigueStatus, parseRewardAmount, prioritizeCandidate, resolveStaticAssetPath, rotateSchoolAttribute, selectSchoolAttribute, shouldPauseAdventureForNoMoneyBag, telemetryToOutdoorRecords, updateAdventureMoneyBagStreak, writeJsonAtomically };

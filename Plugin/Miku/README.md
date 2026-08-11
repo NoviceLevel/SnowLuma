@@ -1,17 +1,14 @@
-# QQ 宠物助手 1.4.3
+# QQ 宠物助手 1.4.4
 
-这是同时支持 NapCat OneBot 和 SnowLuma OneBot 的独立 QQ 宠物助手。程序不安装
-NapCat 插件，也不包含 NapCat、SnowLuma 或 QQ。
+这是由 SnowLuma 插件管理器统一托管的 QQ 宠物助手。Miku 不允许脱离 SnowLuma
+独立启动，避免产生无法从插件页面停止或重启的外部进程。
 
 ## Windows 使用方法
 
-1. 启动 NapCat 或 SnowLuma，并确保目标 QQ 已登录。
-2. 启用目标 QQ 的 OneBot HTTP Server；由 SnowLuma 托管时 Miku 会自动读取所有 `onebot_<QQ>.json` 配置。
-3. 双击 `QQPetHelper.exe`。程序会自动打开宠物面板，并常驻 Windows 系统托盘。
-4. 以后可双击托盘图标打开面板；右键菜单可重新启动服务、打开程序目录或完全退出。
-
-`QQPetHelper.exe` 不显示命令行窗口。关闭浏览器不会停止自动托管，只有从托盘菜单选择
-“退出”才会结束后台服务。`start.bat` 作为故障排查备用入口，会显示运行日志。
+1. 启动 SnowLuma，并确保目标 QQ 已登录。
+2. 在 SnowLuma WebUI 打开“插件”页面。
+3. 启用 Miku，然后点击“启动”。Miku 会自动读取所有 `onebot_<QQ>.json` 配置。
+4. 以后统一从该页面启动、停止或重启 Miku；`start.bat`、`start.sh`、`multi.mjs` 和 `index.mjs` 均拒绝直接启动。
 
 程序默认调用 `get_version_info` 自动识别 NapCat/SnowLuma。首次启动默认不会自动托管，
 但默认以属性收益为优先：按实时三项属性缺口动态选择最低项，并在目标属性下选择单位时间收益最高的课程；金币阈值为 0，夜间冒险默认关闭。页面中的“轮换三项属性”和“固定属性”仍可手动选择。
@@ -21,6 +18,7 @@ NapCat 插件，也不包含 NapCat、SnowLuma 或 QQ。
 走访/PK 间隔统一按秒设置。新增写操作默认关闭，已有账号的 `autoStart`、`safeMode` 等选择不会被重置。
 1.4.1 将托管设置重组为“任务与照顾、社交互动、高级设置”三层，并在顶部集中显示运行状态与关键开关。
 1.4.3 修复疲劳策略绕过任务开关、冒险时段和每日次数的问题；护理失败不再阻断整轮托管，照顾别人经验改为独立测量，并清理已移除功能的残留字段和接口。手动刷新会跳过缓存重新同步互动消息。
+1.4.4 改为仅允许 SnowLuma 插件管理器通过 IPC 启动；SnowLuma 退出或管理通道断开时，Miku 会同时关闭全部账号进程，防止遗留“外部运行”实例。
 
 ## 修改 OneBot 地址或令牌
 
@@ -40,11 +38,7 @@ QQPET_DATA_DIR=
 
 由 SnowLuma 插件管理器启动时，Miku 会为每个已登录账号启动独立进程和 WebUI 端口，从 `8091` 开始递增；`QQPET_BOT_UIN` 可指定第一个显示的账号。
 
-由 NapCatQQ Desktop 托管时无需编辑此文件；Desktop 会自动读取当前 Bot 的
-OneBot HTTP 端口和 Token，并使用独立的动态 Web 端口启动 QQPet。
-
-`QQPET_RUNTIME` 可以是 `auto`、`napcat` 或 `snowluma`。不要把包含 access token 的
-`config.env` 发给其他人。
+`QQPET_RUNTIME` 建议使用 `snowluma` 或 `auto`。不要把包含 access token 的 `config.env` 发给其他人。
 
 运行日志同时保存在账号数据目录的 `logs/qqpet.log`。单个文件达到 5 MiB 后自动滚动，
 最多保留五个备份；启动控制台也会显示本次运行使用的完整日志路径。
@@ -63,7 +57,7 @@ OneBot HTTP 端口和 Token，并使用独立的动态 Web 端口启动 QQPet。
 
 - Web UI 仅监听本机回环地址。
 - OneBot HTTP 不要监听公网。
-- NapCat 和 SnowLuma 不要同时托管同一个 QQ。
+- 不要同时使用其他 OneBot 实现托管同一个 QQ。
 - 自动化使用非公开 QQ 宠物接口，可能受到服务端规则及账号风控影响。
 
 QQ 经典农场、踩踩和自动回踩不包含在本发行版中。
@@ -74,9 +68,4 @@ QQ 经典农场、踩踩和自动回踩不包含在本发行版中。
 
 ## Linux 使用方法
 
-1. 解压 `linux-x64.tar.gz`，进入解压后的目录。
-2. 启动 NapCat 或 SnowLuma 的 OneBot HTTP Server。
-3. 执行 `./start.sh`，浏览器打开 <http://127.0.0.1:8091>。
-
-Linux 包内置 Node.js，不需要另外安装。当前支持 x86-64、glibc 2.31 或更高版本；Linux
-没有 Windows 托盘程序，可使用 systemd、supervisord 或终端会话管理后台运行。
+Linux 下同样必须从 SnowLuma WebUI 的“插件”页面启动。`start.sh` 不再作为独立入口。

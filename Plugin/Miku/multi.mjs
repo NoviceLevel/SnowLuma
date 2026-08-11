@@ -12,6 +12,21 @@ const defaultConfigDir = path.resolve(
 const defaultPrimaryUin = process.env.QQPET_BOT_UIN?.trim() || '';
 const reportedIssues = new Set();
 
+function isSnowLumaManagedLaunch(
+  env = process.env,
+  hasIpc = typeof process.send === 'function' && process.connected,
+) {
+  return env.SNOWLUMA_PLUGIN_MANAGED === '1'
+    && env.SNOWLUMA_PLUGIN_ID === 'miku'
+    && hasIpc;
+}
+
+function assertSnowLumaManagedLaunch() {
+  if (!isSnowLumaManagedLaunch()) {
+    throw new Error('Miku 必须从 SnowLuma 插件页面启动，禁止直接运行 multi.mjs、index.mjs 或启动脚本');
+  }
+}
+
 function reportOnce(key, message) {
   if (reportedIssues.has(key)) return;
   reportedIssues.add(key);
@@ -104,6 +119,7 @@ function waitForExit(child, timeoutMs = 5000) {
 }
 
 async function main() {
+  assertSnowLumaManagedLaunch();
   const baseWebPort = validateBasePort();
   const baseDataDir = process.env.QQPET_DATA_DIR?.trim();
   /** @type {Map<string, { account: any, child: import('node:child_process').ChildProcess | null, restarts: number, index: number, key: string, restartTimer?: NodeJS.Timeout }>} */
@@ -131,6 +147,8 @@ async function main() {
     clearRestartTimer(existing);
     const env = {
       ...process.env,
+      SNOWLUMA_PLUGIN_MANAGED: '',
+      SNOWLUMA_PLUGIN_WORKER: '1',
       QQPET_ONEBOT_URL: account.url,
       QQPET_ONEBOT_TOKEN: account.token,
       QQPET_WEB_PORT: String(baseWebPort + index),
@@ -141,7 +159,7 @@ async function main() {
     const child = spawn(process.execPath, [entry], {
       cwd: pluginDir,
       env,
-      stdio: 'inherit',
+      stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
       windowsHide: true,
     });
     const record = {
@@ -256,6 +274,7 @@ async function main() {
   process.once('SIGINT', () => void shutdown());
   process.once('SIGTERM', () => void shutdown());
   process.once('SIGHUP', () => void shutdown());
+  process.once('disconnect', () => void shutdown());
   await syncWorkers();
   syncTimer = setInterval(() => void syncWorkers(), 5000);
 }
@@ -267,4 +286,4 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   });
 }
 
-export { accountKey, configuredAccounts };
+export { accountKey, configuredAccounts, isSnowLumaManagedLaunch };

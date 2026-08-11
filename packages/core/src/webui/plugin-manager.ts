@@ -48,6 +48,7 @@ interface PluginDescriptor {
   botUin: string | null;
   multiAccount: boolean;
   authorizationRequired: boolean;
+  managerOnly: boolean;
   folderName: string;
   pluginDir: string;
   entryPath: string | null;
@@ -114,7 +115,9 @@ export class PluginManager {
     const child = spawn(process.execPath, args, {
       cwd: descriptor.pluginDir,
       env: this.spawnEnv(descriptor),
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: descriptor.managerOnly
+        ? ['ignore', 'pipe', 'pipe', 'ipc']
+        : ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
     const record: ManagedRecord = {
@@ -194,9 +197,9 @@ export class PluginManager {
         const botUin = typeof manifest.botUin === 'string' && /^\d{5,20}$/.test(manifest.botUin)
           ? manifest.botUin
           : null;
-        result.push({ id, name: typeof manifest.displayName === 'string' ? manifest.displayName : typeof manifest.name === 'string' ? manifest.name : entry.name, version: typeof manifest.version === 'string' ? manifest.version : '0.0.0', description: typeof manifest.description === 'string' ? manifest.description : '', protocol: typeof manifest.protocol === 'string' ? manifest.protocol : '', botUin, multiAccount: manifest.multiAccount === true || webui.multiAccount === true, authorizationRequired: manifest.authorizationRequired === true, folderName: entry.name, pluginDir, entryPath, configPath: path.join(pluginDir, 'config.env'), webUrl: Number.isInteger(port) && port > 0 && port <= 65535 ? `http://${host}:${port}` : null, webPort: Number.isInteger(port) && port > 0 && port <= 65535 ? port : null });
+        result.push({ id, name: typeof manifest.displayName === 'string' ? manifest.displayName : typeof manifest.name === 'string' ? manifest.name : entry.name, version: typeof manifest.version === 'string' ? manifest.version : '0.0.0', description: typeof manifest.description === 'string' ? manifest.description : '', protocol: typeof manifest.protocol === 'string' ? manifest.protocol : '', botUin, multiAccount: manifest.multiAccount === true || webui.multiAccount === true, authorizationRequired: manifest.authorizationRequired === true, managerOnly: manifest.managerOnly === true, folderName: entry.name, pluginDir, entryPath, configPath: path.join(pluginDir, 'config.env'), webUrl: Number.isInteger(port) && port > 0 && port <= 65535 ? `http://${host}:${port}` : null, webPort: Number.isInteger(port) && port > 0 && port <= 65535 ? port : null });
       } catch (error) {
-        result.push({ id: entry.name, name: entry.name, version: '-', description: '', protocol: '', botUin: null, multiAccount: false, authorizationRequired: false, folderName: entry.name, pluginDir, entryPath: null, configPath: null, webUrl: null, webPort: null, manifestError: error instanceof Error ? error.message : String(error) });
+        result.push({ id: entry.name, name: entry.name, version: '-', description: '', protocol: '', botUin: null, multiAccount: false, authorizationRequired: false, managerOnly: false, folderName: entry.name, pluginDir, entryPath: null, configPath: null, webUrl: null, webPort: null, manifestError: error instanceof Error ? error.message : String(error) });
       }
     }
     return result.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
@@ -299,6 +302,10 @@ export class PluginManager {
 
   private spawnEnv(descriptor: PluginDescriptor): NodeJS.ProcessEnv {
     const env = { ...process.env };
+    if (descriptor.managerOnly) {
+      env.SNOWLUMA_PLUGIN_MANAGED = '1';
+      env.SNOWLUMA_PLUGIN_ID = descriptor.id;
+    }
     if (descriptor.protocol !== 'onebot-http-v11' || env.QQPET_ONEBOT_TOKEN || readEnvValue(descriptor.configPath, 'QQPET_ONEBOT_TOKEN')) return env;
     let port = 3000;
     try { const url = new URL(readEnvValue(descriptor.configPath, 'QQPET_ONEBOT_URL')); port = Number(url.port || (url.protocol === 'https:' ? 443 : 80)); } catch { /* optional */ }

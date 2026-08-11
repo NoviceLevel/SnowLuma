@@ -1,10 +1,6 @@
 @echo off
 setlocal
-cd /d "%~dp0"
-
-set "MIKU_NODE=%~dp0..\..\node.exe"
-if not exist "%MIKU_NODE%" set "MIKU_NODE=node"
-"%MIKU_NODE%" --env-file-if-exists=config.env multi.mjs
-set "MIKU_EXIT=%ERRORLEVEL%"
-if not "%MIKU_EXIT%"=="0" pause
-exit /b %MIKU_EXIT%
+echo Miku must be started and stopped from the SnowLuma Plugins page.
+echo Open SnowLuma WebUI, then go to Plugins and click Start.
+pause
+exit /b 1

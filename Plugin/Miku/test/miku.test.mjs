@@ -23,6 +23,7 @@ import {
   isFallbackWorthy,
   isIrrecoverableSettleError,
   isRestPeriodActive,
+  isSnowLumaManagedWorker,
   isWithinTimeWindow,
   normalizeConfig,
   orderCandidatesForSmart,
@@ -36,11 +37,20 @@ import {
   telemetryToOutdoorRecords,
   updateAdventureMoneyBagStreak,
 } from '../index.mjs';
-import { accountKey, configuredAccounts } from '../multi.mjs';
+import { accountKey, configuredAccounts, isSnowLumaManagedLaunch } from '../multi.mjs';
 
 const pluginDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 describe('Miku configuration and persistence', () => {
+  test('requires a SnowLuma-managed IPC launch for manager and workers', () => {
+    assert.equal(isSnowLumaManagedLaunch({ SNOWLUMA_PLUGIN_MANAGED: '1', SNOWLUMA_PLUGIN_ID: 'miku' }, true), true);
+    assert.equal(isSnowLumaManagedLaunch({ SNOWLUMA_PLUGIN_MANAGED: '1', SNOWLUMA_PLUGIN_ID: 'miku' }, false), false);
+    assert.equal(isSnowLumaManagedLaunch({}, true), false);
+    assert.equal(isSnowLumaManagedWorker({ SNOWLUMA_PLUGIN_WORKER: '1', SNOWLUMA_PLUGIN_ID: 'miku' }, true), true);
+    assert.equal(isSnowLumaManagedWorker({ SNOWLUMA_PLUGIN_WORKER: '1', SNOWLUMA_PLUGIN_ID: 'miku' }, false), false);
+    assert.equal(isSnowLumaManagedWorker({}, true), false);
+  });
+
   test('starts in manual, attribute-first mode by default', () => {
     assert.equal(DEFAULT_CONFIG.autoStart, false);
     assert.equal(DEFAULT_CONFIG.safeMode, false);

@@ -68,4 +68,28 @@ describe('PluginManager', () => {
     await manager.setEnabled('toggle', true);
     expect((await manager.list())[0]?.enabled).toBe(true);
   });
+
+  it('starts manager-only plugins with a SnowLuma IPC channel', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'snowluma-plugin-manager-'));
+    const pluginDir = await createPlugin(root, 'managed', {
+      id: 'managed',
+      name: 'Managed plugin',
+      version: '1.0.0',
+      entry: 'index.mjs',
+      managerOnly: true,
+    });
+    await writeFile(path.join(pluginDir, 'index.mjs'), `
+      if (process.env.SNOWLUMA_PLUGIN_MANAGED !== '1' ||
+          process.env.SNOWLUMA_PLUGIN_ID !== 'managed' ||
+          typeof process.send !== 'function' || !process.connected) process.exit(23);
+      setInterval(() => {}, 1000);
+    `, 'utf8');
+    const manager = new PluginManager(root);
+
+    const started = await manager.start('managed');
+    expect(started).toMatchObject({ state: 'running', running: true, managed: true });
+
+    const stopped = await manager.stop('managed');
+    expect(stopped).toMatchObject({ state: 'stopped', running: false, managed: false });
+  });
 });
