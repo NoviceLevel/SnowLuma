@@ -197,6 +197,7 @@ function App() {
   const [saveState, setSaveState] = useState<'saved' | 'dirty' | 'saving' | 'error'>('saved');
   const [accountVisible, setAccountVisible] = useState(false);
   const [activeView, setActiveView] = useState(() => ['overview', 'settings', 'activity'].includes(window.localStorage.getItem('miku:active-view') || '') ? window.localStorage.getItem('miku:active-view') as string : 'overview');
+  const [settingsView, setSettingsView] = useState(() => ['strategy', 'social', 'advanced'].includes(window.localStorage.getItem('miku:settings-view') || '') ? window.localStorage.getItem('miku:settings-view') as string : 'strategy');
   const [now, setNow] = useState(Date.now());
   const configRef = useRef(config);
   const dirtyRef = useRef(false);
@@ -379,6 +380,12 @@ function App() {
   }, {} as Record<string, TelemetrySummary>)) as TelemetrySummary[];
   const storyRemaining = story.storyId && !story.finished ? Math.max(0, Number(story.remainingSeconds || 0) - Math.max(0, Math.floor((now - Date.parse(state.updatedAt || new Date().toISOString())) / 1000))) : 0;
   const modeLabel = ({ lowest: '动态补最低属性', rotation: `每 ${config.schoolRotationEvery || 1} 次轮换`, fixed: '固定属性' } as AnyRecord)[String(config.schoolSelectionMode)] || String(config.schoolSelectionMode || '--');
+  const enabledTaskLabels = [config.schoolEnabled && '学习', config.workEnabled && '打工', config.adventureEnabled && '冒险'].filter(Boolean);
+  const settingTabs = [
+    { value: 'strategy', label: '任务与照顾' },
+    { value: 'social', label: '社交互动' },
+    { value: 'advanced', label: '高级设置' },
+  ];
 
   return (
     <Toasty toastManager={toastManager}>
@@ -644,46 +651,58 @@ function App() {
 
           <section className="flex flex-col gap-3" aria-labelledby="settings-title" hidden={activeView !== 'settings'}>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <Text as="h2" variant="heading2" id="settings-title">托管设置</Text>
+              <div>
+                <Text as="h2" variant="heading2" id="settings-title">托管设置</Text>
+                <Text size="sm" variant="secondary">先设置日常策略，低频与风险参数集中在高级设置</Text>
+              </div>
               <Badge variant={saveState === 'error' ? 'red' : saveState === 'saved' ? 'green' : 'orange'}>
                 {saveState === 'saving' ? '正在保存…' : saveState === 'dirty' ? '将自动保存…' : saveState === 'error' ? '保存失败' : '已自动保存'}
               </Badge>
             </div>
             <form id="settings" onSubmit={(event) => event.preventDefault()} className="flex flex-col gap-3">
-              <Grid variant="2up" gap="sm">
-                <GridItem><SettingSection title="基础策略">
+              <LayerCard>
+                <LayerCard.Primary className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <Badge variant={automationRunning ? 'green' : 'neutral'}>{automationRunning ? '托管运行中' : '托管已停止'}</Badge>
+                    <Badge variant={config.safeMode ? 'orange' : 'green'}>{config.safeMode ? '只读模式' : '允许执行'}</Badge>
+                    <Badge variant="purple">{enabledTaskLabels.length ? enabledTaskLabels.join(' · ') : '未启用任务'}</Badge>
+                    <Text size="sm" variant="secondary">当前目标：{attributeNames[activeAttribute] || '--'} · {modeLabel}</Text>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-4">
+                    {toggle('autoStart', '启动时自动托管')}
+                    {toggle('safeMode', '安全模式（只读）')}
+                  </div>
+                </LayerCard.Primary>
+              </LayerCard>
+
+              <Tabs
+                variant="underline"
+                value={settingsView}
+                onValueChange={(value) => { setSettingsView(value); window.localStorage.setItem('miku:settings-view', value); }}
+                tabs={settingTabs}
+              />
+
+              <div className="flex flex-col gap-3" hidden={settingsView !== 'strategy'}>
+                <Grid variant="2up" gap="sm">
+                  <GridItem><SettingSection title="学习策略">
+                  {toggle('schoolEnabled', '启用自动学习')}
                   {select('taskPriority', '任务优先顺序', [['school', '优先学习'], ['work', '优先打工'], ['smart', '智能择优']], { description: '智能择优自动对比学习/打工收益选最优' })}
                   {select('schoolSelectionMode', '学习属性策略', [['lowest', '动态补最低属性'], ['rotation', '轮换三项属性'], ['fixed', '固定属性']])}
                   {input('coinThreshold', '学习金币阈值', 'number', { min: 0, description: '金币低于该值时优先选免费课程' })}
-                  {select('fatigue8HourAction', '在线超过 8 小时后', [['rest', '休息'], ['work', '打工'], ['school', '学习'], ['adventure', '冒险']], { description: '疲劳后任务收益下降，可选择休息' })}
-                  {select('fatigue12HourAction', '在线超过 12 小时后', [['rest', '休息'], ['work', '打工'], ['school', '学习'], ['adventure', '冒险']])}
-                  <div data-miku-wide><Badge variant="purple">当前学习属性：{attributeNames[activeAttribute] || '--'}（{modeLabel}）</Badge></div>
-                </SettingSection></GridItem>
-                <GridItem><SettingSection title="休息时段">
-                  {toggle('restPeriodEnabled', '启用定时休息')}
-                  {input('restStartTime', '开始时间', 'time')}
-                  {input('restEndTime', '结束时间', 'time', { description: '支持跨午夜；开始与结束相同表示全天休息' })}
-                  <div data-miku-wide><Text size="sm" variant="secondary">休息期间不会开始新任务；已经开始的任务会等待结束并正常结算。</Text></div>
-                </SettingSection></GridItem>
-                <GridItem><SettingSection title="学习">
-                  {toggle('schoolEnabled', '启用自动学习')}
                   {select('schoolAttribute', '基准属性', [['physical', '力量'], ['culture', '智力'], ['art', '魅力']], { description: '固定模式直接学习该属性；轮换模式以此为起点；动态模式忽略' })}
                   {select('courseSubEvent', '课程', [['0', '自动最高效率'], ...catalogs.courses.map((item) => [String(item.subEventType), `${[item.name, item.duration, item.reward].filter(Boolean).join(' · ')}${item.canDo ? '' : '（不可用）'}`] as [string, string])], { description: '仅“固定属性”策略生效，其余策略自动选最高效率课程' })}
                   {toggle('schoolRotationEnabled', '启用周期轮换')}
                   {input('schoolRotationEvery', '每完成几次轮换', 'number', { min: 1, description: '仅“轮换三项属性”策略生效' })}
                   <CatalogPreview item={selectedCourse} fallback="自动选择课程" />
                 </SettingSection></GridItem>
-                <GridItem><SettingSection title="打工">
+                  <GridItem><SettingSection title="打工策略">
                   {toggle('workEnabled', '启用自动打工')}
                   {input('workCareerType', '职业编号', 'number', { min: 0, description: '0 表示自动选择开放职业' })}
                   {select('workJobSubEvent', '岗位', [['0', '自动最高效率'], ...jobs.map((item) => [String(item.subEventType), `${[item.careerName, item.name, item.duration, item.reward].filter(Boolean).join(' · ')}${item.canDo ? '' : '（不可用）'}`] as [string, string])])}
                   <CatalogPreview item={selectedJob} fallback="自动选择岗位" />
                   {input('workTimesPerDay', '每日打工次数', 'number', { min: 0, description: '0 不限' })}
-                  {toggle('employFriend', '自动雇佣好友宠物')}
-                  {input('workFriendUins', '指定好友 QQ', 'text', { placeholder: '多个 QQ 用空格或逗号分隔', description: '留空自动扫描好友；填写后按顺序尝试' })}
-                  {input('workFriendScanLimit', '自动候选扫描数', 'number', { min: 1, max: 200, description: '仅在未指定好友 QQ 时使用' })}
                 </SettingSection></GridItem>
-                <GridItem><SettingSection title="冒险">
+                  <GridItem><SettingSection title="冒险策略">
                   {toggle('adventureEnabled', '启用自动冒险')}
                   {toggle('quickAdventureEnabled', '快速冒险（只刷钱袋子）')}
                   {toggle('adventureMoneyBagStopEnabled', '连续未掉落时暂停当日冒险')}
@@ -698,7 +717,7 @@ function App() {
                   {input('adventureEndTime', '结束时间', 'time', { description: '支持跨零点，例如 22:00–02:00' })}
                   {input('adventureTimesPerDay', '每日冒险次数', 'number', { min: 0, description: '0 不限' })}
                 </SettingSection></GridItem>
-                <GridItem><SettingSection title="自动照顾">
+                  <GridItem><SettingSection title="日常照顾">
                   {toggle('careEnabled', '启用自动照顾')}
                   {toggle('autoBuySupplies', '自动购买用品')}
                   {input('hungerThreshold', '喂食阈值', 'number', { min: 0, description: '体力低于该值时自动喂食' })}
@@ -706,7 +725,18 @@ function App() {
                   {input('foodPurchaseCount', '购买饼干数', 'number', { min: 1, description: '库存不足时自动补货' })}
                   {input('bathPurchaseCount', '购买沐浴球数', 'number', { min: 1, description: '库存不足时自动补货' })}
                 </SettingSection></GridItem>
-                <GridItem><SettingSection title="PK">
+                </Grid>
+              </div>
+
+              <div className="flex flex-col gap-3" hidden={settingsView !== 'social'}>
+                <Grid variant="2up" gap="sm">
+                  <GridItem><SettingSection title="好友雇佣">
+                    {toggle('employFriend', '自动雇佣好友宠物')}
+                    {input('workFriendUins', '指定好友 QQ', 'text', { placeholder: '多个 QQ 用空格或逗号分隔', description: '留空自动扫描好友；填写后按顺序尝试' })}
+                    {input('workFriendScanLimit', '自动候选扫描数', 'number', { min: 1, max: 200, description: '仅在未指定好友 QQ 时使用' })}
+                    <div data-miku-wide><Text size="sm" variant="secondary">雇佣设置仅在自动打工启用时生效。</Text></div>
+                  </SettingSection></GridItem>
+                  <GridItem><SettingSection title="宠物 PK">
                   {toggle('pkEnabled', '启用自动 PK')}
                   {toggle('pkOnlyWinnable', '只挑战战力更低的宠物')}
                   {toggle('pkFriends', '挑战好友宠物')}
@@ -715,18 +745,8 @@ function App() {
                   {input('pkDelayMinSeconds', 'PK 间隔最短秒数', 'number', { min: 0 })}
                   {input('pkDelayMaxSeconds', 'PK 间隔最长秒数', 'number', { min: 0 })}
                   {input('pkCandidateScanLimit', '候选扫描数', 'number', { min: 1, max: 100 })}
-                </SettingSection></GridItem>
-                <GridItem><SettingSection title="运行与安全">
-                  {toggle('safeMode', '安全模式（只读）')}
-                  {toggle('autoStart', '启动时自动托管')}
-                  {input('petId', 'Pet ID', 'text', { placeholder: 'AUTO 表示自动获取' })}
-                  {input('intervalSeconds', '页面与后端刷新秒数', 'number', { min: 3, max: 300, description: '页面轮询与后端检查使用同一周期' })}
-                  {input('verifyDelaySeconds', '写后验证等待秒数', 'number', { min: 0, max: 30, description: '喂食/洗澡/结算后复查属性前的等待' })}
-                  {input('failureCooldownSeconds', '失败冷却秒数', 'number', { min: 0, description: '照料失败后的封锁时长' })}
-                  {input('settleRetrySeconds', '结算重试间隔秒数', 'number', { min: 1 })}
-                  {input('startConfirmSeconds', '任务失踪确认窗口秒数', 'number', { min: 5, description: '本地已开工但服务器暂未返回任务时的等待' })}
-                </SettingSection></GridItem>
-                <GridItem className="md:col-span-2"><SettingSection title="走访与照顾别人">
+                  </SettingSection></GridItem>
+                  <GridItem className="md:col-span-2"><SettingSection title="走访与照顾别人">
                   {toggle('visitEnabled', '启用自动走访')}
                   {toggle('visitFriends', '走访好友')}
                   {toggle('visitStrangers', '走访陌生人')}
@@ -737,8 +757,29 @@ function App() {
                   {input('otherCareDailyExperienceLimit', '停止照顾的每日经验值', 'number', { min: 0, description: '0 表示不限制' })}
                   {input('visitCandidateScanLimit', '候选扫描数', 'number', { min: 1, max: 200 })}
                   {input('visitStrangerGroupIds', '陌生人群号', 'text', { placeholder: '留空自动选群' })}
-                </SettingSection></GridItem>
-              </Grid>
+                  </SettingSection></GridItem>
+                </Grid>
+              </div>
+
+              <div className="flex flex-col gap-3" hidden={settingsView !== 'advanced'}>
+                <Grid variant="2up" gap="sm">
+                  <GridItem><SettingSection title="休息与疲劳">
+                    {toggle('restPeriodEnabled', '启用定时休息')}
+                    {input('restStartTime', '开始时间', 'time')}
+                    {input('restEndTime', '结束时间', 'time', { description: '支持跨午夜；开始与结束相同表示全天休息' })}
+                    {select('fatigue8HourAction', '在线超过 8 小时后', [['rest', '休息'], ['work', '打工'], ['school', '学习'], ['adventure', '冒险']], { description: '疲劳后任务收益下降，可选择休息' })}
+                    {select('fatigue12HourAction', '在线超过 12 小时后', [['rest', '休息'], ['work', '打工'], ['school', '学习'], ['adventure', '冒险']])}
+                  </SettingSection></GridItem>
+                  <GridItem><SettingSection title="运行参数">
+                    {input('petId', 'Pet ID', 'text', { placeholder: 'AUTO 表示自动获取' })}
+                    {input('intervalSeconds', '页面与后端刷新秒数', 'number', { min: 3, max: 300, description: '页面轮询与后端检查使用同一周期' })}
+                    {input('verifyDelaySeconds', '写后验证等待秒数', 'number', { min: 0, max: 30, description: '喂食/洗澡/结算后复查属性前的等待' })}
+                    {input('failureCooldownSeconds', '失败冷却秒数', 'number', { min: 0, description: '照料失败后的封锁时长' })}
+                    {input('settleRetrySeconds', '结算重试间隔秒数', 'number', { min: 1 })}
+                    {input('startConfirmSeconds', '任务失踪确认窗口秒数', 'number', { min: 5, description: '本地已开工但服务器暂未返回任务时的等待' })}
+                  </SettingSection></GridItem>
+                </Grid>
+              </div>
             </form>
           </section>
         </section>

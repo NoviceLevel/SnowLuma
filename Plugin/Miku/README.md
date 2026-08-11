@@ -1,4 +1,4 @@
-# QQ 宠物助手 1.4.0
+# QQ 宠物助手 1.4.1
 
 这是同时支持 NapCat OneBot 和 SnowLuma OneBot 的独立 QQ 宠物助手。程序不安装
 NapCat 插件，也不包含 NapCat、SnowLuma 或 QQ。
@@ -19,6 +19,7 @@ NapCat 插件，也不包含 NapCat、SnowLuma 或 QQ。
 
 1.4.0 的托管设置新增定时休息、指定雇佣好友、钱袋冒险、连续未掉落暂停和宠物 PK；
 走访/PK 间隔统一按秒设置。新增写操作默认关闭，已有账号的 `autoStart`、`safeMode` 等选择不会被重置。
+1.4.1 将托管设置重组为“任务与照顾、社交互动、高级设置”三层，并在顶部集中显示运行状态与关键开关。
 
 ## 修改 OneBot 地址或令牌
 
