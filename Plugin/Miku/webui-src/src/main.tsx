@@ -605,35 +605,39 @@ function App() {
             </LayerCard.Primary>
           </LayerCard> : null}
 
-          {state.interactions?.length ? <LayerCard className="overflow-x-auto p-0">
+          {state.interactions?.length ? <LayerCard>
             <SectionHeader title="互动消息" badge={<Badge variant="purple">{state.interactions.length} 条</Badge>} />
-            <Table layout="fixed">
-              <colgroup><col className="w-[22%]" /><col className="w-[28%]" /><col className="w-[50%]" /></colgroup>
-              <Table.Header variant="compact"><Table.Row><Table.Head>对象</Table.Head><Table.Head>互动时间</Table.Head><Table.Head>内容</Table.Head></Table.Row></Table.Header>
-              <Table.Body>{state.interactions.map((item: AnyRecord) => <Table.Row key={item.id}>
-                <Table.Cell><Text bold>{item.petName || `QQ ${item.uin || '未知'}`}</Text></Table.Cell>
-                <Table.Cell><Text size="xs" variant="secondary">{[({ 1: '喂食', 2: '踩踩', 5: '洗澡', 6: '火花', 6400: '打工', 6700: '冒险' } as AnyRecord)[item.eventType] || '互动', item.timestamp ? new Date(item.timestamp).toLocaleString('zh-CN', { hour12: false }) : '时间未知'].filter(Boolean).join(' · ')}</Text></Table.Cell>
-                <Table.Cell><Text size="sm">{item.text || ''}</Text></Table.Cell>
-              </Table.Row>)}</Table.Body>
-            </Table>
+            <LayerCard.Primary className="overflow-x-auto p-0">
+              <Table layout="fixed" className="[&_td]:px-4 [&_th]:px-4">
+                <colgroup><col className="w-[22%]" /><col className="w-[28%]" /><col className="w-[50%]" /></colgroup>
+                <Table.Header variant="compact"><Table.Row><Table.Head>对象</Table.Head><Table.Head>互动时间</Table.Head><Table.Head>内容</Table.Head></Table.Row></Table.Header>
+                <Table.Body>{state.interactions.map((item: AnyRecord) => <Table.Row key={item.id}>
+                  <Table.Cell><Text bold>{item.petName || `QQ ${item.uin || '未知'}`}</Text></Table.Cell>
+                  <Table.Cell><Text size="xs" variant="secondary">{[({ 1: '喂食', 2: '踩踩', 5: '洗澡', 6: '火花', 6400: '打工', 6700: '冒险' } as AnyRecord)[item.eventType] || '互动', item.timestamp ? new Date(item.timestamp).toLocaleString('zh-CN', { hour12: false }) : '时间未知'].filter(Boolean).join(' · ')}</Text></Table.Cell>
+                  <Table.Cell><Text size="sm">{item.text || ''}</Text></Table.Cell>
+                </Table.Row>)}</Table.Body>
+              </Table>
+            </LayerCard.Primary>
           </LayerCard> : null}
 
-          {catalogs.careers.length ? <LayerCard className="overflow-x-auto p-0">
+          {catalogs.careers.length ? <LayerCard>
             <SectionHeader title="职业树" />
-            <Table layout="fixed">
-              <colgroup><col className="w-[32%]" /><col className="w-[18%]" /><col className="w-[50%]" /></colgroup>
-              <Table.Header variant="compact"><Table.Row><Table.Head>职业</Table.Head><Table.Head>编号</Table.Head><Table.Head>解锁说明</Table.Head></Table.Row></Table.Header>
-              <Table.Body>{catalogs.careers.map((career) => <Table.Row key={String(career.careerType)}>
-                <Table.Cell><Text bold>{career.name || '未知职业'}</Text></Table.Cell>
-                <Table.Cell><Text size="sm" variant="secondary">{career.careerType}</Text></Table.Cell>
-                <Table.Cell><Text size="sm" variant="secondary">{career.message || '已解锁'}</Text></Table.Cell>
-              </Table.Row>)}</Table.Body>
-            </Table>
+            <LayerCard.Primary className="overflow-x-auto p-0">
+              <Table layout="fixed" className="[&_td]:px-4 [&_th]:px-4">
+                <colgroup><col className="w-[32%]" /><col className="w-[18%]" /><col className="w-[50%]" /></colgroup>
+                <Table.Header variant="compact"><Table.Row><Table.Head>职业</Table.Head><Table.Head>编号</Table.Head><Table.Head>解锁说明</Table.Head></Table.Row></Table.Header>
+                <Table.Body>{catalogs.careers.map((career) => <Table.Row key={String(career.careerType)}>
+                  <Table.Cell><Text bold>{career.name || '未知职业'}</Text></Table.Cell>
+                  <Table.Cell><Text size="sm" variant="secondary">{career.careerType}</Text></Table.Cell>
+                  <Table.Cell><Text size="sm" variant="secondary">{career.message || '已解锁'}</Text></Table.Cell>
+                </Table.Row>)}</Table.Body>
+              </Table>
+            </LayerCard.Primary>
           </LayerCard> : null}
 
           <LayerCard>
             <SectionHeader title="运行日志" />
-            <LayerCard.Primary><pre className="m-0 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-kumo-contrast p-4 font-mono text-xs leading-relaxed text-kumo-inverse">{compactLogs(state.logs || []).join('\n') || '尚无日志'}</pre></LayerCard.Primary>
+            <LayerCard.Primary className="p-0"><pre className="m-0 max-h-72 overflow-auto whitespace-pre-wrap bg-kumo-contrast p-4 font-mono text-xs leading-relaxed text-kumo-inverse">{compactLogs(state.logs || []).join('\n') || '尚无日志'}</pre></LayerCard.Primary>
           </LayerCard>
           </div>
 
