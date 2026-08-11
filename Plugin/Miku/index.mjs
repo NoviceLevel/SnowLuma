@@ -981,7 +981,7 @@ class QQPetApi {
       encodeVarintField(1, Math.max(0, Math.trunc(offset))),
       encodeVarintField(2, Math.max(1, Math.min(50, Math.trunc(limit) || 20))),
       encodeStringField(3, this.petId),
-      encodeVarintField(4, 2)
+      encodeVarintField(100, 2)
     );
     const root = parseProtobufFields((await this.sendOidb(PACKETS.outdoorHistory, requestBody)).body);
     const readWatermark = getVarintField(root, 4);
@@ -1439,6 +1439,75 @@ function telemetryDelta(before, after) {
     charm: Number((after.charm - before.charm).toFixed(3))
   };
 }
+function telemetryEventType(kind) {
+  return {
+    school: 6100,
+    work: 6400,
+    adventure: 6700
+  }[kind] ?? 0;
+}
+function telemetryToOutdoorRecords(telemetry, limit = 30) {
+  const records = [];
+  const seen = new Set();
+  for (const entry of Array.isArray(telemetry) ? telemetry : []) {
+    if (!entry || entry.status !== "settled") continue;
+    const settledAt = Date.parse(entry.settledAt ?? entry.recordedAt ?? "");
+    if (!Number.isFinite(settledAt)) continue;
+    const storyId = String(entry.storyId ?? "").trim();
+    const key = storyId || [entry.kind, entry.item?.name, entry.startedAt, entry.settledAt].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const results = Object.entries({
+      strength: "力量",
+      intelligence: "智力",
+      charm: "魅力"
+    }).flatMap(([attribute, name]) => {
+      const difference = Number(entry.delta?.[attribute]);
+      return Number.isFinite(difference) && difference !== 0 ? [{
+        type: 0,
+        name,
+        value: Number(entry.after?.[attribute]) || 0,
+        difference,
+        rightTopDescription: "",
+        iconUrl: "",
+        isPetInfo: true,
+        petId: ""
+      }] : [];
+    });
+    const expectedReward = String(entry.item?.reward ?? "").trim();
+    records.push({
+      storyId: storyId || `local-${settledAt}-${records.length}`,
+      timestamp: Math.floor(settledAt / 1000),
+      eventType: telemetryEventType(entry.kind),
+      grade: 0,
+      title: String(entry.item?.name || ({ school: "学习", work: "打工", adventure: "冒险" }[entry.kind] ?? "出门任务")),
+      detail: [
+        entry.elapsedSeconds == null ? "本机结算记录" : `实际耗时 ${Math.max(0, Math.trunc(Number(entry.elapsedSeconds) || 0))} 秒`,
+        results.length ? "" : expectedReward
+      ].filter(Boolean).join(" · "),
+      results,
+      unread: false,
+      outdoorVersion: 0,
+      source: "local"
+    });
+  }
+  return records.sort((left, right) => right.timestamp - left.timestamp).slice(0, Math.max(0, Math.trunc(limit)));
+}
+function isOutdoorHistoryCompatibilityError(error) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /rule type not match appid/i.test(message);
+}
+function mergeOutdoorRecords(serverRecords, localRecords, limit = 30) {
+  const output = [];
+  const seen = new Set();
+  for (const record of [...(Array.isArray(serverRecords) ? serverRecords : []), ...(Array.isArray(localRecords) ? localRecords : [])]) {
+    const key = String(record?.storyId || `${record?.timestamp}|${record?.eventType}|${record?.title}`);
+    if (!record || seen.has(key)) continue;
+    seen.add(key);
+    output.push(record);
+  }
+  return output.sort((left, right) => Number(right.timestamp || 0) - Number(left.timestamp || 0)).slice(0, Math.max(0, Math.trunc(limit)));
+}
 function randomDelaySeconds(minMinutes, maxMinutes, random = Math.random) {
   const minSeconds = Math.max(0, Math.trunc(minMinutes * 60));
   const maxSeconds = Math.max(minSeconds, Math.trunc(maxMinutes * 60));
@@ -1596,6 +1665,8 @@ class AutomationController {
   outdoorRecords = [];
   outdoorRecordsLoadedAt = 0;
   outdoorRecordsError = null;
+  outdoorRecordsSource = "local";
+  outdoorRecordsServerUnsupported = false;
   get running() {
     return this.active;
   }
@@ -1734,14 +1805,7 @@ class AutomationController {
       this.interactionsLoadedAt = Date.now();
     }
     if (!this.outdoorRecordsLoadedAt || Date.now() - this.outdoorRecordsLoadedAt >= 120000) {
-      try {
-        this.outdoorRecords = await client.queryOutdoorRecords(30);
-        this.outdoorRecordsError = null;
-      } catch (error) {
-        this.outdoorRecordsError = error instanceof Error ? error.message : String(error);
-        this.host.log("出门记录同步失败：" + this.outdoorRecordsError);
-      }
-      this.outdoorRecordsLoadedAt = Date.now();
+      await this.refreshOutdoorRecords(client);
     }
     const fullProfile = {
       ...profile
@@ -1750,15 +1814,28 @@ class AutomationController {
     return fullProfile;
   }
   async refreshOutdoorRecords(client = null) {
-    try {
-      const api = client || await this.client();
-      this.outdoorRecords = await api.queryOutdoorRecords(30);
-      this.outdoorRecordsError = null;
-      this.outdoorRecordsLoadedAt = Date.now();
-    } catch (error) {
-      this.outdoorRecordsError = error instanceof Error ? error.message : String(error);
-      this.host.log("出门记录同步失败：" + this.outdoorRecordsError);
+    const localRecords = telemetryToOutdoorRecords(this.progress.snapshot().telemetry, 30);
+    if (!this.outdoorRecordsServerUnsupported) {
+      try {
+        const api = client || await this.client();
+        const serverRecords = (await api.queryOutdoorRecords(30)).map(record => ({ ...record, source: "server" }));
+        this.outdoorRecords = mergeOutdoorRecords(serverRecords, localRecords, 30);
+        this.outdoorRecordsSource = serverRecords.length && localRecords.length ? "mixed" : serverRecords.length ? "server" : "local";
+        this.outdoorRecordsError = null;
+        this.outdoorRecordsLoadedAt = Date.now();
+        return this.outdoorRecords;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.outdoorRecordsServerUnsupported = isOutdoorHistoryCompatibilityError(error);
+        this.outdoorRecordsError = this.outdoorRecordsServerUnsupported
+          ? "当前 PC QQ 通道不支持服务器出门历史，正在显示本机真实结算记录"
+          : "服务器出门历史暂时同步失败，正在显示本机真实结算记录：" + message;
+        this.host.log("出门记录同步失败：" + message);
+      }
     }
+    this.outdoorRecords = localRecords;
+    this.outdoorRecordsSource = "local";
+    this.outdoorRecordsLoadedAt = Date.now();
     return this.outdoorRecords;
   }
   async blocked(config, actionLabel) {
@@ -2130,6 +2207,8 @@ class AutomationController {
       interactions: this.interactions,
       outdoorRecords: this.outdoorRecords,
       outdoorRecordsError: this.outdoorRecordsError,
+      outdoorRecordsSource: this.outdoorRecordsSource,
+      outdoorRecordsServerUnsupported: this.outdoorRecordsServerUnsupported,
       fatigue: fatigue,
       values: values,
       story: displayStory,
@@ -3203,4 +3282,4 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exitCode = 1;
   });
 }
-export { AutomationController, DEFAULT_CONFIG, OneBotHttpClient, ProgressStore, QQPetPlugin, TaskFallbackError, buildCandidateList, compareEmployableFriends, compareRewardPerSecond, createApiToken, createWebServer, decideNextTask, estimateBestTaskRps, fatigueAction, hasFreeAvailableCourses, isAdventureWindowOpen, isFailureDiscouraged, isFallbackWorthy, isIrrecoverableSettleError, isWithinTimeWindow, normalizeConfig, orderCandidatesForSmart, parseDurationSeconds, parseFatigueStatus, parseRewardAmount, resolveStaticAssetPath, rotateSchoolAttribute, selectSchoolAttribute, selectSchoolOrWork, writeJsonAtomically };
+export { AutomationController, DEFAULT_CONFIG, OneBotHttpClient, ProgressStore, QQPetApi, QQPetPlugin, TaskFallbackError, buildCandidateList, compareEmployableFriends, compareRewardPerSecond, createApiToken, createWebServer, decideNextTask, estimateBestTaskRps, fatigueAction, hasFreeAvailableCourses, isAdventureWindowOpen, isFailureDiscouraged, isFallbackWorthy, isIrrecoverableSettleError, isOutdoorHistoryCompatibilityError, isWithinTimeWindow, mergeOutdoorRecords, normalizeConfig, orderCandidatesForSmart, parseDurationSeconds, parseFatigueStatus, parseRewardAmount, resolveStaticAssetPath, rotateSchoolAttribute, selectSchoolAttribute, selectSchoolOrWork, telemetryToOutdoorRecords, writeJsonAtomically };
