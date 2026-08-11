@@ -589,21 +589,6 @@ function App() {
             </LayerCard.Primary>}
           </LayerCard>
 
-          {telemetry.length ? <LayerCard className="overflow-x-auto p-0">
-            <SectionHeader title="本地属性遥测" badge={<Badge variant="neutral">{telemetry.length} 条 · 属性增量 {formatNumber(totalGain, 1)}</Badge>} />
-            <Table layout="fixed">
-              <colgroup><col className="w-[18%]" /><col className="w-[12%]" /><col className="w-[32%]" /><col className="w-[24%]" /><col className="w-[14%]" /></colgroup>
-              <Table.Header variant="compact"><Table.Row><Table.Head>结算时间</Table.Head><Table.Head>类型</Table.Head><Table.Head>任务</Table.Head><Table.Head>属性增量</Table.Head><Table.Head>耗时</Table.Head></Table.Row></Table.Header>
-              <Table.Body>{telemetry.map((item: AnyRecord, index: number) => <Table.Row key={`${item.storyId || item.settledAt}-${index}`}>
-                <Table.Cell><Text size="xs" variant="secondary">{item.settledAt ? new Date(item.settledAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '--'}</Text></Table.Cell>
-                <Table.Cell><Badge variant={item.kind === 'school' ? 'blue' : item.kind === 'work' ? 'green' : item.kind === 'adventure' ? 'orange' : 'neutral'}>{({ school: '学习', work: '打工', adventure: '冒险' } as AnyRecord)[item.kind] || '任务'}</Badge></Table.Cell>
-                <Table.Cell><Text size="sm">{item.item?.name || '--'}{item.attribute ? <Text size="xs" variant="secondary"> · {attributeNames[item.attribute] || item.attribute}</Text> : null}</Text></Table.Cell>
-                <Table.Cell><Text size="sm">{telemetryReward(item)}</Text></Table.Cell>
-                <Table.Cell><Text size="xs" variant="secondary">{duration(item.elapsedSeconds)}</Text></Table.Cell>
-              </Table.Row>)}</Table.Body>
-            </Table>
-          </LayerCard> : null}
-
           {profile.medals?.length ? <LayerCard>
             <SectionHeader title="我的徽章" badge={<Badge variant="purple">{profile.medals.filter((item: AnyRecord) => item.acquired).length}/{profile.medals.length} 枚</Badge>} />
             <LayerCard.Primary>
