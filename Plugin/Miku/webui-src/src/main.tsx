@@ -574,7 +574,7 @@ function App() {
 
           <div className="flex flex-col gap-4" hidden={activeView !== 'activity'}>
           <LayerCard className="overflow-x-auto p-0">
-            <SectionHeader title="任务记录" badge={<Badge variant="orange">{outdoorRecords.length} 条 · 本机结算</Badge>} />
+            <SectionHeader title="任务记录" badge={<Badge variant="orange">{outdoorRecords.length} 条 · 结算</Badge>} />
             {outdoorRecords.length ? <Table layout="fixed">
               <colgroup><col className="w-[20%]" /><col className="w-[14%]" /><col className="w-[28%]" /><col className="w-[38%]" /></colgroup>
               <Table.Header variant="compact"><Table.Row><Table.Head>时间</Table.Head><Table.Head>类型</Table.Head><Table.Head>任务</Table.Head><Table.Head>结果</Table.Head></Table.Row></Table.Header>
