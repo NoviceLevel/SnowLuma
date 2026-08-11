@@ -49,9 +49,10 @@ const emptyCatalogs: Catalogs = { courses: [], careers: [], adventures: [], bath
 const numericFields = new Set([
   'intervalSeconds', 'coinThreshold', 'hungerThreshold', 'cleanThreshold', 'foodPurchaseCount',
   'bathPurchaseCount', 'verifyDelaySeconds', 'failureCooldownSeconds', 'schoolRotationEvery',
-  'courseSubEvent', 'visitMaxPerDay', 'visitDelayMinMinutes', 'visitDelayMaxMinutes',
+  'courseSubEvent', 'visitMaxPerDay', 'visitDelayMinSeconds', 'visitDelayMaxSeconds',
   'otherCareDailyExperienceLimit', 'visitCandidateScanLimit', 'workCareerType', 'workJobSubEvent',
-  'workTimesPerDay', 'workFriendScanLimit', 'adventureTimesPerDay', 'settleRetrySeconds',
+  'workTimesPerDay', 'workFriendScanLimit', 'adventureTimesPerDay',
+  'adventureNoMoneyBagLimit', 'pkMaxPerDay', 'pkDelayMinSeconds', 'pkDelayMaxSeconds', 'pkCandidateScanLimit', 'settleRetrySeconds',
   'startConfirmSeconds',
 ]);
 
@@ -648,15 +649,21 @@ function App() {
                 {saveState === 'saving' ? '正在保存…' : saveState === 'dirty' ? '将自动保存…' : saveState === 'error' ? '保存失败' : '已自动保存'}
               </Badge>
             </div>
-            <form id="settings" onSubmit={(event) => event.preventDefault()}>
+            <form id="settings" onSubmit={(event) => event.preventDefault()} className="flex flex-col gap-3">
               <Grid variant="2up" gap="sm">
-                <GridItem><SettingSection title="任务策略">
+                <GridItem><SettingSection title="基础策略">
                   {select('taskPriority', '任务优先顺序', [['school', '优先学习'], ['work', '优先打工'], ['smart', '智能择优']], { description: '智能择优自动对比学习/打工收益选最优' })}
                   {select('schoolSelectionMode', '学习属性策略', [['lowest', '动态补最低属性'], ['rotation', '轮换三项属性'], ['fixed', '固定属性']])}
                   {input('coinThreshold', '学习金币阈值', 'number', { min: 0, description: '金币低于该值时优先选免费课程' })}
                   {select('fatigue8HourAction', '在线超过 8 小时后', [['rest', '休息'], ['work', '打工'], ['school', '学习'], ['adventure', '冒险']], { description: '疲劳后任务收益下降，可选择休息' })}
                   {select('fatigue12HourAction', '在线超过 12 小时后', [['rest', '休息'], ['work', '打工'], ['school', '学习'], ['adventure', '冒险']])}
                   <div data-miku-wide><Badge variant="purple">当前学习属性：{attributeNames[activeAttribute] || '--'}（{modeLabel}）</Badge></div>
+                </SettingSection></GridItem>
+                <GridItem><SettingSection title="休息时段">
+                  {toggle('restPeriodEnabled', '启用定时休息')}
+                  {input('restStartTime', '开始时间', 'time')}
+                  {input('restEndTime', '结束时间', 'time', { description: '支持跨午夜；开始与结束相同表示全天休息' })}
+                  <div data-miku-wide><Text size="sm" variant="secondary">休息期间不会开始新任务；已经开始的任务会等待结束并正常结算。</Text></div>
                 </SettingSection></GridItem>
                 <GridItem><SettingSection title="学习">
                   {toggle('schoolEnabled', '启用自动学习')}
@@ -673,10 +680,14 @@ function App() {
                   <CatalogPreview item={selectedJob} fallback="自动选择岗位" />
                   {input('workTimesPerDay', '每日打工次数', 'number', { min: 0, description: '0 不限' })}
                   {toggle('employFriend', '自动雇佣好友宠物')}
-                  {input('workFriendScanLimit', '雇佣候选扫描数', 'number', { min: 1, max: 200 })}
+                  {input('workFriendUins', '指定好友 QQ', 'text', { placeholder: '多个 QQ 用空格或逗号分隔', description: '留空自动扫描好友；填写后按顺序尝试' })}
+                  {input('workFriendScanLimit', '自动候选扫描数', 'number', { min: 1, max: 200, description: '仅在未指定好友 QQ 时使用' })}
                 </SettingSection></GridItem>
                 <GridItem><SettingSection title="冒险">
                   {toggle('adventureEnabled', '启用自动冒险')}
+                  {toggle('quickAdventureEnabled', '快速冒险（只刷钱袋子）')}
+                  {toggle('adventureMoneyBagStopEnabled', '连续未掉落时暂停当日冒险')}
+                  {input('adventureNoMoneyBagLimit', '连续未掉落上限', 'number', { min: 1, max: 1000, description: '掉落后清零，次日自动恢复' })}
                   {select(
                     'adventureOption',
                     '冒险',
@@ -695,6 +706,16 @@ function App() {
                   {input('foodPurchaseCount', '购买饼干数', 'number', { min: 1, description: '库存不足时自动补货' })}
                   {input('bathPurchaseCount', '购买沐浴球数', 'number', { min: 1, description: '库存不足时自动补货' })}
                 </SettingSection></GridItem>
+                <GridItem><SettingSection title="PK">
+                  {toggle('pkEnabled', '启用自动 PK')}
+                  {toggle('pkOnlyWinnable', '只挑战战力更低的宠物')}
+                  {toggle('pkFriends', '挑战好友宠物')}
+                  {toggle('pkStrangers', '挑战陌生人宠物')}
+                  {input('pkMaxPerDay', '每日 PK 次数', 'number', { min: 0, description: '0 不限' })}
+                  {input('pkDelayMinSeconds', 'PK 间隔最短秒数', 'number', { min: 0 })}
+                  {input('pkDelayMaxSeconds', 'PK 间隔最长秒数', 'number', { min: 0 })}
+                  {input('pkCandidateScanLimit', '候选扫描数', 'number', { min: 1, max: 100 })}
+                </SettingSection></GridItem>
                 <GridItem><SettingSection title="运行与安全">
                   {toggle('safeMode', '安全模式（只读）')}
                   {toggle('autoStart', '启动时自动托管')}
@@ -711,8 +732,8 @@ function App() {
                   {toggle('visitStrangers', '走访陌生人')}
                   {toggle('visitAutoCare', '自动照顾别人')}
                   {input('visitMaxPerDay', '主动走访人数上限/日', 'number', { min: 0, description: '0 不限' })}
-                  {input('visitDelayMinMinutes', '走访等待最短分钟', 'number', { min: 0 })}
-                  {input('visitDelayMaxMinutes', '走访等待最长分钟', 'number', { min: 0 })}
+                  {input('visitDelayMinSeconds', '走访间隔最短秒数', 'number', { min: 0 })}
+                  {input('visitDelayMaxSeconds', '走访间隔最长秒数', 'number', { min: 0, description: '每次走访后随机等待；仍受基础检查周期限制' })}
                   {input('otherCareDailyExperienceLimit', '停止照顾的每日经验值', 'number', { min: 0, description: '0 表示不限制' })}
                   {input('visitCandidateScanLimit', '候选扫描数', 'number', { min: 1, max: 200 })}
                   {input('visitStrangerGroupIds', '陌生人群号', 'text', { placeholder: '留空自动选群' })}

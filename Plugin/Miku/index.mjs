@@ -13,6 +13,9 @@ const DEFAULT_CONFIG_VALUES = {
   petId: "AUTO",
   intervalSeconds: 15,
   statusRefreshSeconds: 15,
+  restPeriodEnabled: false,
+  restStartTime: "00:00",
+  restEndTime: "07:00",
   coinThreshold: 0,
   taskPriority: "school",
   fatigue8HourAction: "rest",
@@ -36,8 +39,8 @@ const DEFAULT_CONFIG_VALUES = {
   visitStrangers: true,
   visitAutoCare: true,
   visitMaxPerDay: 10,
-  visitDelayMinMinutes: 30,
-  visitDelayMaxMinutes: 30,
+  visitDelayMinSeconds: 30,
+  visitDelayMaxSeconds: 30,
   otherCareDailyExperienceLimit: 0,
   visitCandidateScanLimit: 30,
   visitStrangerGroupIds: "",
@@ -46,18 +49,30 @@ const DEFAULT_CONFIG_VALUES = {
   workJobSubEvent: 0,
   workTimesPerDay: 0,
   employFriend: true,
+  workFriendUins: "",
   workFriendScanLimit: 10,
   adventureEnabled: false,
+  quickAdventureEnabled: false,
+  adventureMoneyBagStopEnabled: false,
+  adventureNoMoneyBagLimit: 10,
   adventureOption: "",
   adventureStartTime: "20:00",
   adventureEndTime: "23:59",
   adventureTimesPerDay: 3,
+  pkEnabled: false,
+  pkOnlyWinnable: true,
+  pkMaxPerDay: 10,
+  pkDelayMinSeconds: 60,
+  pkDelayMaxSeconds: 60,
+  pkFriends: true,
+  pkStrangers: false,
+  pkCandidateScanLimit: 30,
   settleRetrySeconds: 60,
   startConfirmSeconds: 45
 };
 const DEFAULT_CONFIG = DEFAULT_CONFIG_VALUES;
 const TIME_OF_DAY_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
-const NUMERIC_CONFIG_KEYS = ["intervalSeconds", "statusRefreshSeconds", "coinThreshold", "hungerThreshold", "cleanThreshold", "foodPurchaseCount", "bathPurchaseCount", "verifyDelaySeconds", "failureCooldownSeconds", "schoolRotationEvery", "courseSubEvent", "visitMaxPerDay", "visitDelayMinMinutes", "visitDelayMaxMinutes", "otherCareDailyExperienceLimit", "visitCandidateScanLimit", "workCareerType", "workJobSubEvent", "workTimesPerDay", "workFriendScanLimit", "adventureTimesPerDay", "settleRetrySeconds", "startConfirmSeconds"];
+const NUMERIC_CONFIG_KEYS = ["intervalSeconds", "statusRefreshSeconds", "coinThreshold", "hungerThreshold", "cleanThreshold", "foodPurchaseCount", "bathPurchaseCount", "verifyDelaySeconds", "failureCooldownSeconds", "schoolRotationEvery", "courseSubEvent", "visitMaxPerDay", "visitDelayMinSeconds", "visitDelayMaxSeconds", "otherCareDailyExperienceLimit", "visitCandidateScanLimit", "workCareerType", "workJobSubEvent", "workTimesPerDay", "workFriendScanLimit", "adventureTimesPerDay", "adventureNoMoneyBagLimit", "pkMaxPerDay", "pkDelayMinSeconds", "pkDelayMaxSeconds", "pkCandidateScanLimit", "settleRetrySeconds", "startConfirmSeconds"];
 function normalizeTimeOfDay(value, fallback) {
   const text = String(value ?? "").trim();
   return TIME_OF_DAY_PATTERN.test(text) ? text : fallback;
@@ -78,6 +93,12 @@ function normalizeConfig(input) {
     return config;
   }
   const source = input;
+  if (source.visitDelayMinSeconds === undefined && source.visitDelayMinMinutes !== undefined) {
+    source.visitDelayMinSeconds = Number(source.visitDelayMinMinutes) * 60;
+  }
+  if (source.visitDelayMaxSeconds === undefined && source.visitDelayMaxMinutes !== undefined) {
+    source.visitDelayMaxSeconds = Number(source.visitDelayMaxMinutes) * 60;
+  }
   for (const key of Object.keys(DEFAULT_CONFIG)) {
     const value = source[key];
     if (typeof DEFAULT_CONFIG[key] == typeof value) {
@@ -107,16 +128,22 @@ function normalizeConfig(input) {
   }
   config.adventureStartTime = normalizeTimeOfDay(config.adventureStartTime, "20:00");
   config.adventureEndTime = normalizeTimeOfDay(config.adventureEndTime, "23:59");
+  config.restStartTime = normalizeTimeOfDay(config.restStartTime, "00:00");
+  config.restEndTime = normalizeTimeOfDay(config.restEndTime, "07:00");
   config.intervalSeconds = Math.max(3, Math.min(300, Math.trunc(config.intervalSeconds)));
   config.statusRefreshSeconds = config.intervalSeconds;
   config.foodPurchaseCount = Math.max(1, Math.trunc(config.foodPurchaseCount));
   config.bathPurchaseCount = Math.max(1, Math.trunc(config.bathPurchaseCount));
   config.schoolRotationEvery = Math.max(1, Math.trunc(config.schoolRotationEvery));
-  config.visitDelayMinMinutes = Math.trunc(config.visitDelayMinMinutes);
-  config.visitDelayMaxMinutes = Math.max(config.visitDelayMinMinutes, Math.trunc(config.visitDelayMaxMinutes));
+  config.visitDelayMinSeconds = Math.trunc(config.visitDelayMinSeconds);
+  config.visitDelayMaxSeconds = Math.max(config.visitDelayMinSeconds, Math.trunc(config.visitDelayMaxSeconds));
   config.otherCareDailyExperienceLimit = Math.trunc(config.otherCareDailyExperienceLimit);
   config.visitCandidateScanLimit = Math.max(1, Math.min(200, Math.trunc(config.visitCandidateScanLimit)));
   config.workFriendScanLimit = Math.max(1, Math.min(200, Math.trunc(config.workFriendScanLimit)));
+  config.adventureNoMoneyBagLimit = Math.max(1, Math.min(1000, Math.trunc(config.adventureNoMoneyBagLimit)));
+  config.pkDelayMinSeconds = Math.trunc(config.pkDelayMinSeconds);
+  config.pkDelayMaxSeconds = Math.max(config.pkDelayMinSeconds, Math.trunc(config.pkDelayMaxSeconds));
+  config.pkCandidateScanLimit = Math.max(1, Math.min(100, Math.trunc(config.pkCandidateScanLimit)));
   config.verifyDelaySeconds = Math.max(0, Math.min(30, Math.trunc(config.verifyDelaySeconds)));
   config.failureCooldownSeconds = Math.max(0, Math.trunc(config.failureCooldownSeconds));
   config.settleRetrySeconds = Math.max(1, Math.trunc(config.settleRetrySeconds));
@@ -125,6 +152,10 @@ function normalizeConfig(input) {
 }
 function isAutoPetId(petId) {
   return ["", "AUTO", "YOUR_PET_ID"].includes(String(petId ?? "").trim().toUpperCase());
+}
+function parseUinList(input) {
+  if (typeof input !== "string") return [];
+  return [...new Set(input.split(/[,，;；\s]+/).map(value => value.trim()).filter(value => /^[1-9]\d{4,11}$/.test(value)))];
 }
 const EMPTY_DAILY_COUNTS = {
   school: 0,
@@ -135,7 +166,9 @@ const EMPTY_DAILY_COUNTS = {
   wash: 0,
   visitFriend: 0,
   visitStranger: 0,
-  careOther: 0
+  careOther: 0,
+  pkFriend: 0,
+  pkStranger: 0
 };
 function currentDateKey() {
   const date = new Date();
@@ -150,12 +183,15 @@ function createDailyProgress() {
     counts: counts,
     history: [],
     pending: null,
+    pendingPk: null,
     careBlocks: {},
     settledStoryIds: [],
     dismissedStoryIds: [],
     schoolRotationIndex: 0,
     schoolRotationProgress: 0,
     visitedTargetIds: [],
+    pkTargetIds: [],
+    consecutiveAdventureNoMoneyBag: 0,
     attributeBaseline: null,
     dailyExperienceGain: 0,
     goldFloor: null,
@@ -226,6 +262,9 @@ class ProgressStore {
         schoolRotationIndex: Math.max(0, Math.trunc(Number(rest.schoolRotationIndex) || 0)),
         schoolRotationProgress: Math.max(0, Math.trunc(Number(rest.schoolRotationProgress) || 0)),
         visitedTargetIds: Array.isArray(rest.visitedTargetIds) ? rest.visitedTargetIds.map(String).slice(-500) : [],
+        pkTargetIds: Array.isArray(rest.pkTargetIds) ? rest.pkTargetIds.map(String).slice(-500) : [],
+        pendingPk: rest.pendingPk && typeof rest.pendingPk === "object" ? rest.pendingPk : null,
+        consecutiveAdventureNoMoneyBag: Math.max(0, Math.trunc(Number(rest.consecutiveAdventureNoMoneyBag) || 0)),
         attributeBaseline: rest.attributeBaseline && typeof rest.attributeBaseline == "object" ? {
           strength: Math.max(0, Number(rest.attributeBaseline.strength) || 0),
           intelligence: Math.max(0, Number(rest.attributeBaseline.intelligence) || 0),
@@ -267,8 +306,11 @@ class ProgressStore {
           ...EMPTY_DAILY_COUNTS
         },
         pending: null,
+        pendingPk: null,
         careBlocks: {},
         visitedTargetIds: [],
+        pkTargetIds: [],
+        consecutiveAdventureNoMoneyBag: 0,
         attributeBaseline: null,
         dailyExperienceGain: 0,
         goldFloor: null,
@@ -401,6 +443,36 @@ class ProgressStore {
       this.state.visitedTargetIds = this.state.visitedTargetIds.slice(-500);
       this.save();
     }
+  }
+  pkTargetWasUsed(targetId) {
+    return this.snapshot().pkTargetIds.includes(String(targetId));
+  }
+  markPkTarget(targetId) {
+    const value = String(targetId);
+    if (!this.state.pkTargetIds.includes(value)) {
+      this.state.pkTargetIds.push(value);
+      this.state.pkTargetIds = this.state.pkTargetIds.slice(-500);
+      this.save();
+    }
+  }
+  setPendingPk(kind, storyId, targetId) {
+    this.state.pendingPk = {
+      kind,
+      storyId,
+      targetId: String(targetId),
+      createdAt: new Date().toISOString()
+    };
+    this.save();
+  }
+  clearPendingPk() {
+    const pendingPk = this.state.pendingPk;
+    this.state.pendingPk = null;
+    this.save();
+    return pendingPk;
+  }
+  setAdventureNoMoneyBagStreak(value) {
+    this.state.consecutiveAdventureNoMoneyBag = Math.max(0, Math.trunc(Number(value) || 0));
+    this.save();
   }
   recordAttributes(values) {
     this.rollover();
@@ -653,7 +725,10 @@ const PACKETS = {
   reportEvent: ["OidbSvcTrpcTcp.0x96a6_1", 38566, 1],
   medalGallery: ["OidbSvcTrpcTcp.0x9ac3_0", 39619, 0],
   interactionHistory: ["OidbSvcTrpcTcp.0x994d_1", 39245, 1],
+  petFriends: ["OidbSvcTrpcTcp.0x985d_0", 39005, 0],
+  pkPower: ["OidbSvcTrpcTcp.0x9ad4_1", 39636, 1],
 };
+const PET_DIRECTORY_TYPES = { friends: 3, alsoPlaying: 4 };
 function extractPacketHex(payload) {
   if (typeof payload == "string") {
     return payload;
@@ -681,6 +756,10 @@ function parseRewardAmount(rewardText) {
   const gold = rewardString.match(new RegExp("(?:金币|金豆|经验)\\D*" + numberPattern))?.[1];
   const first = rewardString.match(new RegExp(numberPattern))?.[1];
   return Number(total ?? gold ?? first ?? 0);
+}
+function adventureHasMoneyBag(adventure) {
+  const combined = String(adventure?.name ?? "") + "\n" + String(adventure?.description ?? "");
+  return /钱袋子?|捡到(?:了)?\s*金币/.test(combined) || /金币/.test(String(adventure?.reward ?? ""));
 }
 function extractImageUrl(...texts) {
   for (const text of texts) {
@@ -1058,6 +1137,91 @@ class QQPetApi {
       total: statusOf(4)
     };
   }
+  async queryPetFriendRecords(includeNonFriends = true, directoryType = PET_DIRECTORY_TYPES.friends) {
+    const records = [];
+    const seenCursors = new Set();
+    let cursor = "";
+    for (let page = 0; page < 100; page += 1) {
+      const fields = parseProtobufFields((await this.sendOidb(PACKETS.petFriends, concatBytes(encodeStringField(1, cursor), encodeVarintField(2, directoryType)))).body);
+      for (const entry of getProtobufFields(fields, 1).filter(field => field.wireType === 2)) {
+        const recordFields = parseProtobufFields(entry.value);
+        const isFriend = getVarintField(recordFields, 8) === 0;
+        if (!includeNonFriends && !isFriend) continue;
+        const petFields = parseProtobufFields(getBytesField(recordFields, 1));
+        const accountFields = parseProtobufFields(getBytesField(recordFields, 2));
+        const petId = (getStringField(petFields, 8) || getStringField(petFields, 101)).trim();
+        const uin = String(getVarintField(accountFields, 1));
+        if (!petId || !/^[1-9]\d{4,11}$/.test(uin)) continue;
+        const levelFields = parseProtobufFields(getBytesField(petFields, 13));
+        records.push({
+          target: {
+            uin,
+            petId,
+            name: (getStringField(petFields, 1) || getStringField(accountFields, 2)).trim(),
+            level: getVarintField(levelFields, 1),
+            kind: isFriend ? "friend" : "stranger"
+          },
+          isFriend,
+          raw: recordFields
+        });
+      }
+      if (!getVarintField(fields, 3)) break;
+      const nextCursor = getStringField(fields, 2).trim();
+      if (!nextCursor || nextCursor === cursor || seenCursors.has(nextCursor)) break;
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
+    }
+    return [...new Map(records.map(record => [record.target.uin, record])).values()];
+  }
+  async queryPetFriendDirectory() {
+    const records = await this.queryPetFriendRecords(true);
+    return {
+      petDirectory: records.map(record => {
+        const pkFields = parseProtobufFields(getBytesField(record.raw, 14));
+        return { target: record.target, isFriend: record.isFriend, displayedPkPower: getVarintField(pkFields, 4) };
+      }),
+      workHireFriends: records.filter(record => record.isFriend).map(record => {
+        const hireFields = parseProtobufFields(getBytesField(record.raw, 13));
+        const statusCode = getVarintField(record.raw, 3);
+        return {
+          target: record.target,
+          coinBonusPercent: getVarintField(hireFields, 1),
+          careerName: getStringField(hireFields, 2).trim(),
+          statusCode,
+          statusDescription: getStringField(record.raw, 7).trim(),
+          available: statusCode === 10
+        };
+      })
+    };
+  }
+  async queryPetAlsoPlayingDirectory() {
+    return (await this.queryPetFriendRecords(true, PET_DIRECTORY_TYPES.alsoPlaying))
+      .filter(record => !record.isFriend)
+      .map(record => ({
+        target: record.target,
+        isFriend: false,
+        displayedPkPower: getVarintField(parseProtobufFields(getBytesField(record.raw, 14)), 4)
+      }));
+  }
+  async queryPkPower(petId) {
+    if (!String(petId).trim()) throw new QQPetError("宠物 ID 不能为空", "invalid_pet_id");
+    const fields = parseProtobufFields(getBytesField(parseProtobufFields((await this.sendOidb(PACKETS.pkPower, concatBytes(encodeStringField(1, String(petId)), encodeVarintField(100, 2)))).body), 1));
+    const power = getVarintField(fields, 4);
+    if (power <= 0) throw new QQPetError("服务器未返回有效 PK 战力", "pk_power_missing");
+    return { petId: String(petId), power, dominantType: getVarintField(fields, 3) };
+  }
+  async startPk(candidate) {
+    const target = candidate.target;
+    const opponent = concatBytes(encodeStringField(1, target.uin), encodeStringField(2, target.petId));
+    const body = concatBytes(encodeVarintField(1, 6900), encodeStringField(2, this.petId), encodeStringField(3, ""), encodeBytesField(4, opponent), encodeStringField(6, "PK"), encodeVarintField(7, 6901), encodeVarintField(100, 2));
+    const storyId = getStringField(parseProtobufFields((await this.sendOidb(PACKETS.startStory, body)).body), 1);
+    if (!storyId) throw new QQPetError("PK 成功发起但服务器未返回 Story ID", "pk_story_id_missing");
+    return { candidate, storyId };
+  }
+  async settlePk(storyId) {
+    if (!String(storyId).trim()) throw new QQPetError("PK Story ID 不能为空", "invalid_story_id");
+    return this.sendOidb(PACKETS.storySettle, concatBytes(encodeStringField(1, String(storyId)), encodeVarintField(2, 6000), encodeStringField(3, this.petId), encodeVarintField(100, 2)));
+  }
   async visitOther(uin) {
     const visitCommandBody = concatBytes(encodeVarintField(1, 4000), encodeVarintField(2, 0), encodeVarintField(3, 0));
     const requestBody = concatBytes(encodeStringField(1, this.petId), encodeStringField(2, uin), encodeBytesField(3, visitCommandBody), encodeBytesField(4, new Uint8Array()));
@@ -1298,11 +1462,14 @@ class QQPetApi {
       };
     }
   }
-  async startAdventure(optionName = "") {
+  async startAdventure(optionName = "", quickMode = false) {
     const availableOptions = (await this.queryAdventureOptions()).filter(option => option.canDo && option.name);
-    const catalogItem = optionName ? availableOptions.find(option => option.name === optionName) : availableOptions[0];
+    const candidates = optionName ? availableOptions.filter(option => option.name === optionName) : availableOptions;
+    const catalogItem = quickMode ? candidates.find(adventureHasMoneyBag) : candidates[0];
     if (!catalogItem) {
-      throw new QQPetError(optionName ? "指定冒险“" + optionName + "”当前不可用" : "服务器当前没有可执行的冒险");
+      throw quickMode
+        ? new QQPetError("快速冒险本轮未出现钱袋子，稍后继续检查", "coin_bag_not_found")
+        : new QQPetError(optionName ? "指定冒险“" + optionName + "”当前不可用" : "服务器当前没有可执行的冒险");
     }
     const requestParts = [encodeVarintField(1, 6700), encodeStringField(2, this.petId), encodeStringField(3, ""), encodeStringField(6, catalogItem.name)];
     if (catalogItem.subEventType > 0) {
@@ -1312,7 +1479,8 @@ class QQPetApi {
     const response = await this.sendOidb(PACKETS.startStory, concatBytes(...requestParts));
     return {
       item: catalogItem,
-      storyId: getStringField(parseProtobufFields(response.body), 1)
+      storyId: getStringField(parseProtobufFields(response.body), 1),
+      refreshCount: 1
     };
   }
   async queryStory() {
@@ -1447,10 +1615,35 @@ function telemetryToOutdoorRecords(telemetry, limit = 30) {
   }
   return records.sort((left, right) => right.timestamp - left.timestamp).slice(0, Math.max(0, Math.trunc(limit)));
 }
-function randomDelaySeconds(minMinutes, maxMinutes, random = Math.random) {
-  const minSeconds = Math.max(0, Math.trunc(minMinutes * 60));
-  const maxSeconds = Math.max(minSeconds, Math.trunc(maxMinutes * 60));
+function randomDelaySeconds(minSecondsValue, maxSecondsValue, random = Math.random) {
+  const minSeconds = Math.max(0, Math.trunc(minSecondsValue));
+  const maxSeconds = Math.max(minSeconds, Math.trunc(maxSecondsValue));
   return minSeconds + Math.floor(Math.min(0.999999999, Math.max(0, random())) * (maxSeconds - minSeconds + 1));
+}
+function isRestPeriodActive(config, now = new Date()) {
+  if (!config.restPeriodEnabled) return false;
+  const toMinutes = value => {
+    const [hours, minutes] = String(value).split(":").map(Number);
+    return hours * 60 + minutes;
+  };
+  const current = now.getHours() * 60 + now.getMinutes();
+  const start = toMinutes(config.restStartTime);
+  const end = toMinutes(config.restEndTime);
+  if (start === end) return true;
+  return start < end ? current >= start && current < end : current >= start || current < end;
+}
+function updateAdventureMoneyBagStreak(previousStreak, beforeGold, afterGold, limit) {
+  const dropped = afterGold > beforeGold + 0.01;
+  const streak = dropped ? 0 : Math.max(0, Math.trunc(previousStreak)) + 1;
+  return {
+    dropped,
+    goldGain: dropped ? Math.max(1, Math.round(afterGold - beforeGold)) : 0,
+    streak,
+    paused: !dropped && streak >= Math.max(1, Math.trunc(limit))
+  };
+}
+function shouldPauseAdventureForNoMoneyBag(config, streak) {
+  return config.adventureMoneyBagStopEnabled && streak >= Math.max(1, config.adventureNoMoneyBagLimit);
 }
 function rotateSchoolAttribute(config, rotationIndex) {
   if (!config.schoolRotationEnabled) {
@@ -1499,9 +1692,11 @@ function isIrrecoverableSettleError(error) {
 function compareEmployableFriends(left, right) {
   return right.bonus - left.bonus || right.totalReward - left.totalReward || right.target.level - left.target.level || left.target.uin.localeCompare(right.target.uin);
 }
-function buildCandidateList(config, values, counts, recentFailures, now = new Date()) {
+function buildCandidateList(config, values, counts, recentFailures, now = new Date(), progress = {}) {
   const candidates = [];
-  if (isAdventureWindowOpen(config, now) && (!config.adventureTimesPerDay || (counts.adventure ?? 0) < config.adventureTimesPerDay)) {
+  if (isAdventureWindowOpen(config, now)
+    && !shouldPauseAdventureForNoMoneyBag(config, progress.consecutiveAdventureNoMoneyBag ?? 0)
+    && (!config.adventureTimesPerDay || (counts.adventure ?? 0) < config.adventureTimesPerDay)) {
     candidates.push("adventure");
   }
   const schoolWork = config.taskPriority === "smart"
@@ -1785,7 +1980,7 @@ class AutomationController {
   }
   decide(config, values) {
     const snapshot = this.progress.snapshot();
-    return buildCandidateList(config, values, snapshot.counts, snapshot.recentFailures);
+    return buildCandidateList(config, values, snapshot.counts, snapshot.recentFailures, new Date(), snapshot);
   }
   actionArray(payload) {
     if (Array.isArray(payload)) {
@@ -1870,7 +2065,12 @@ class AutomationController {
   async findEmployableFriend(client, config) {
     let candidates;
     try {
-      candidates = (await this.friendCandidates()).slice(0, config.workFriendScanLimit);
+      const preferredUins = parseUinList(config.workFriendUins).filter(uin => uin !== this.host.uin);
+      const friends = await this.friendCandidates();
+      const friendsByUin = new Map(friends.map(friend => [friend.uin, friend]));
+      candidates = preferredUins.length
+        ? preferredUins.map(uin => friendsByUin.get(uin) ?? { uin, name: "", kind: "friend" })
+        : friends.slice(0, config.workFriendScanLimit);
     } catch (error) {
       this.host.log("读取好友列表失败，本次按普通打工继续：" + (error instanceof Error ? error.message : String(error)));
       return null;
@@ -1967,7 +2167,7 @@ class AutomationController {
               this.host.log("走访已完成，暂无法读取对方宠物状态：" + (error instanceof Error ? error.message : String(error)));
             }
           }
-          const nextVisitDelay = randomDelaySeconds(config.visitDelayMinMinutes, config.visitDelayMaxMinutes);
+          const nextVisitDelay = randomDelaySeconds(config.visitDelayMinSeconds, config.visitDelayMaxSeconds);
           this.progress.setBlock("visit", "等待下次走访", nextVisitDelay);
           this.host.updateStatus({
             activity: "自动走访已完成"
@@ -1977,7 +2177,7 @@ class AutomationController {
           lastError = error instanceof Error ? error.message : String(error);
         }
       }
-      const fallbackDelay = randomDelaySeconds(config.visitDelayMinMinutes, config.visitDelayMaxMinutes);
+      const fallbackDelay = randomDelaySeconds(config.visitDelayMinSeconds, config.visitDelayMaxSeconds);
       this.progress.setBlock("visit", lastError || "暂无可走访的宠物", fallbackDelay);
       if (lastError) {
         this.host.log("走访候选检查未成功：" + lastError);
@@ -1988,6 +2188,105 @@ class AutomationController {
       this.host.log("获取走访候选失败：" + message);
     }
     return false;
+  }
+  async pkDirectory(client, config) {
+    const candidates = [];
+    if (config.pkFriends) {
+      try {
+        candidates.push(...(await client.queryPetFriendDirectory()).petDirectory.filter(item => item.isFriend));
+      } catch (error) {
+        this.host.log("读取 QQ 宠物好友 PK 目录失败：" + (error instanceof Error ? error.message : String(error)));
+      }
+    }
+    if (config.pkStrangers) {
+      try {
+        candidates.push(...await client.queryPetAlsoPlayingDirectory());
+      } catch (error) {
+        this.host.log("读取 QQ 宠物陌生人 PK 目录失败：" + (error instanceof Error ? error.message : String(error)));
+      }
+    }
+    return [...new Map(candidates.map(item => [item.target.uin, item])).values()];
+  }
+  async handlePendingPk(client, config) {
+    const pendingPk = this.progress.snapshot().pendingPk;
+    if (!pendingPk) return false;
+    const waitMs = Math.max(0, 8000 - (Date.now() - Date.parse(pendingPk.createdAt)));
+    if (waitMs > 0) {
+      this.host.updateStatus({ activity: "PK 结果播放中，" + Math.ceil(waitMs / 1000) + " 秒后结算；主任务不受影响" });
+      return false;
+    }
+    const blockKey = "settle-pk:" + pendingPk.storyId;
+    if (this.progress.activeBlock(blockKey) || await this.blocked(config, "结算 PK")) return false;
+    try {
+      await client.settlePk(pendingPk.storyId);
+      this.progress.markStorySettled(pendingPk.storyId);
+      this.progress.clearPendingPk();
+      this.progress.increment(pendingPk.kind);
+      this.progress.clearBlock(blockKey);
+      this.host.log("PK 已结算并记录：" + pendingPk.storyId);
+    } catch (error) {
+      if (isIrrecoverableSettleError(error)) {
+        this.progress.dismissStory(pendingPk.storyId);
+        this.progress.clearPendingPk();
+        this.progress.increment(pendingPk.kind);
+        this.progress.clearBlock(blockKey);
+        this.host.log("PK 已由服务器结算：" + pendingPk.storyId);
+      } else {
+        this.progress.setBlock(blockKey, error instanceof Error ? error.message : String(error), config.settleRetrySeconds);
+        throw error;
+      }
+    }
+    return true;
+  }
+  async maybePk(client, config) {
+    const snapshot = this.progress.snapshot();
+    if (!config.pkEnabled || (!config.pkFriends && !config.pkStrangers) || snapshot.pendingPk || this.progress.activeBlock("pk")) return false;
+    const count = (snapshot.counts.pkFriend ?? 0) + (snapshot.counts.pkStranger ?? 0);
+    if ((config.pkMaxPerDay > 0 && count >= config.pkMaxPerDay) || await this.blocked(config, "PK")) return false;
+    try {
+      const candidates = (await this.pkDirectory(client, config))
+        .filter(item => (item.isFriend ? config.pkFriends : config.pkStrangers) && item.target.uin !== this.host.uin && !this.progress.pkTargetWasUsed(item.target.uin))
+        .sort((left, right) => (left.displayedPkPower || Number.MAX_SAFE_INTEGER) - (right.displayedPkPower || Number.MAX_SAFE_INTEGER) || left.target.uin.localeCompare(right.target.uin))
+        .slice(0, config.pkCandidateScanLimit);
+      if (!candidates.length) {
+        this.progress.setBlock("pk", "暂无未挑战的目标", 300);
+        return false;
+      }
+      const selfPower = (await client.queryPkPower(client.petId)).power;
+      let selected = null;
+      let checked = 0;
+      let lastError = "";
+      for (const candidate of candidates) {
+        try {
+          const opponentPower = (await client.queryPkPower(candidate.target.petId)).power;
+          checked += 1;
+          if (!config.pkOnlyWinnable || selfPower > opponentPower) {
+            selected = { target: candidate.target, selfPower, opponentPower };
+            break;
+          }
+        } catch (error) {
+          lastError = error instanceof Error ? error.message : String(error);
+        }
+      }
+      if (!selected) {
+        const reason = config.pkOnlyWinnable && checked > 0 ? "已检查 " + checked + " 个目标，暂无战力更低的宠物" : lastError || "暂无可 PK 的宠物";
+        this.progress.setBlock("pk", reason, 300);
+        this.host.log("本轮未发起 PK：" + reason);
+        return false;
+      }
+      const started = await client.startPk(selected);
+      const kind = selected.target.kind === "friend" ? "pkFriend" : "pkStranger";
+      this.progress.setPendingPk(kind, started.storyId, selected.target.uin);
+      this.progress.markPkTarget(selected.target.uin);
+      this.progress.setBlock("pk", "等待下次 PK", randomDelaySeconds(config.pkDelayMinSeconds, config.pkDelayMaxSeconds));
+      this.host.log("已向" + (selected.target.kind === "friend" ? "好友" : "陌生人") + this.targetLabel(selected.target) + "发起 PK：我方 " + selected.selfPower + "，对方 " + selected.opponentPower + "；Story ID：" + started.storyId);
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.progress.setBlock("pk", message, 300);
+      this.host.log("PK 检查失败：" + message);
+      return false;
+    }
   }
   storyKind(storyId) {
     return {
@@ -2047,6 +2346,14 @@ class AutomationController {
           return true;
         }
         try {
+          let goldBefore = null;
+          if (pending?.kind === "adventure" && config.adventureMoneyBagStopEnabled) {
+            try {
+              goldBefore = Number((await client.queryValues()).gold);
+            } catch (error) {
+              this.host.log("冒险钱袋检测：结算前金币读取失败，本次不累计连续次数：" + (error instanceof Error ? error.message : String(error)));
+            }
+          }
           await client.settleStory(story.storyId);
           let afterValues = null;
           try {
@@ -2057,6 +2364,17 @@ class AutomationController {
             this.host.log("任务已结算，但无法读取最新属性：" + (error instanceof Error ? error.message : String(error)));
           }
           this.recordTaskTelemetry(pending, "settled", afterValues);
+          if (goldBefore !== null && afterValues && Number.isFinite(Number(afterValues.gold))) {
+            const moneyBag = updateAdventureMoneyBagStreak(this.progress.snapshot().consecutiveAdventureNoMoneyBag, goldBefore, Number(afterValues.gold), config.adventureNoMoneyBagLimit);
+            this.progress.setAdventureNoMoneyBagStreak(moneyBag.streak);
+            if (moneyBag.dropped) {
+              this.host.log("冒险掉落钱袋：金币 +" + moneyBag.goldGain + "，连续未掉落次数已清零");
+            } else if (moneyBag.paused) {
+              this.host.log("冒险未掉落钱袋：已连续 " + moneyBag.streak + " 次，今日暂停冒险，次日自动恢复");
+            } else {
+              this.host.log("冒险未掉落钱袋：连续 " + moneyBag.streak + "/" + config.adventureNoMoneyBagLimit + " 次");
+            }
+          }
           this.progress.markStorySettled(story.storyId);
           if (pending?.kind === "school" && config.schoolSelectionMode === "rotation" && config.schoolRotationEnabled) {
             this.progress.advanceSchoolRotation(config.schoolRotationEvery);
@@ -2223,14 +2541,26 @@ class AutomationController {
       const hireNote = workStory.hiredFriend && hireCandidate ? "，已雇佣好友" + this.targetLabel(hireCandidate.target) + "（加成 " + (hireCandidate.bonus >= 0 ? "+" : "") + hireCandidate.bonus + "）" : "";
       this.host.log("已开始打工“" + workStory.item.name + "”" + hireNote + (workStory.storyId ? "，storyId=" + workStory.storyId : ""));
     } else {
-      const adventureStory = await api.startAdventure(config.adventureOption);
+      let adventureStory;
+      try {
+        adventureStory = await api.startAdventure(config.adventureOption, config.quickAdventureEnabled);
+      } catch (error) {
+        if (error instanceof QQPetError && error.code === "coin_bag_not_found") {
+          this.host.log(error.message);
+          this.host.updateStatus({ activity: "快速冒险：稍后再次检查钱袋子" });
+          return false;
+        }
+        throw error;
+      }
       this.progress.setPending("adventure", adventureStory.storyId, {
         startedAt: new Date().toISOString(),
         item: compactTask(adventureStory.item),
         beforeValues: attributeSnapshot(values)
       });
-      this.host.log("已开始冒险“" + adventureStory.item.name + "”" + (adventureStory.storyId ? "，storyId=" + adventureStory.storyId : ""));
+      const quickNote = config.quickAdventureEnabled ? "（命中钱袋子）" : "";
+      this.host.log("已开始冒险“" + adventureStory.item.name + "”" + quickNote + (adventureStory.storyId ? "，storyId=" + adventureStory.storyId : ""));
     }
+    return true;
   }
   async runOnce() {
     if (this.busy) {
@@ -2259,6 +2589,17 @@ class AutomationController {
       }
       if (story.finished && (await this.handleStory(api, config, story))) {
         return "story";
+      }
+      await this.handlePendingPk(api, config);
+      if (isRestPeriodActive(config)) {
+        await this.handleStory(api, config, story);
+        this.host.updateStatus({
+          activity: story.storyId
+            ? "休息时段：等待当前任务结束，剩余 " + story.remainingSeconds + "s"
+            : "休息时段 " + config.restStartTime + "–" + config.restEndTime + "：保持空闲"
+        });
+        this.lastNextCheckHint = "idle";
+        return "rest_period";
       }
       if (config.careEnabled && values.hunger < config.hungerThreshold && !this.progress.activeBlock("feed") && !(await this.blocked(config, "喂食"))) {
         try {
@@ -2321,6 +2662,9 @@ class AutomationController {
         }
         return "wash";
       }
+      if (await this.maybePk(api, config)) {
+        this.host.updateStatus({ progress: this.progress.snapshot() });
+      }
       if (await this.maybeVisit(api, config, foodInventory, bathInventory)) {
         return "visit";
       }
@@ -2342,11 +2686,11 @@ class AutomationController {
         if (await this.blocked(config, forcedAction === "school" ? "学习" : forcedAction === "work" ? "打工" : "冒险")) {
           return forcedAction;
         }
-        await this.startTaskByKind(api, config, values, forcedAction);
-        return forcedAction;
+        const started = await this.startTaskByKind(api, config, values, forcedAction);
+        return started ? forcedAction : "adventure_refresh";
       }
       const snapshot = this.progress.snapshot();
-      const candidates = buildCandidateList(config, values, snapshot.counts, snapshot.recentFailures);
+      const candidates = buildCandidateList(config, values, snapshot.counts, snapshot.recentFailures, new Date(), snapshot);
       if (!candidates.length) {
         this.host.updateStatus({ activity: "空闲：今日任务已完成" });
         this.lastNextCheckHint = "idle";
@@ -2384,8 +2728,8 @@ class AutomationController {
           continue;
         }
         try {
-          await this.startTaskByKind(api, config, values, candidate);
-          return candidate;
+          const started = await this.startTaskByKind(api, config, values, candidate);
+          if (started) return candidate;
         } catch (error) {
           if (!isFallbackWorthy(error)) {
             throw error;
@@ -2478,6 +2822,9 @@ class QQPetPlugin {
     this.context = context;
     fs.mkdirSync(context.dataPath, mkdirOptions);
     this.loadConfig();
+    // Persist normalized fields so legacy minute-based visit delays are migrated once,
+    // while preserving user choices such as autoStart and safeMode.
+    this.saveConfig();
     try {
       const loginInfo = await context.actions.call("get_login_info", {}, context.adapterName, context.pluginManager.config);
       this.uin = String(loginInfo?.user_id ?? "");
@@ -2528,9 +2875,13 @@ class QQPetPlugin {
       ...this.configValue,
       ...partial
     });
-    const visitKeys = ["visitEnabled", "visitFriends", "visitStrangers", "visitAutoCare", "visitMaxPerDay", "visitDelayMinMinutes", "visitDelayMaxMinutes", "otherCareDailyExperienceLimit", "visitCandidateScanLimit", "visitStrangerGroupIds"];
+    const visitKeys = ["visitEnabled", "visitFriends", "visitStrangers", "visitAutoCare", "visitMaxPerDay", "visitDelayMinSeconds", "visitDelayMaxSeconds", "otherCareDailyExperienceLimit", "visitCandidateScanLimit", "visitStrangerGroupIds"];
     if (this.scheduler && visitKeys.some(key => config[key] !== this.configValue[key])) {
       this.scheduler.progress.clearBlock("visit");
+    }
+    const pkKeys = ["pkEnabled", "pkOnlyWinnable", "pkMaxPerDay", "pkDelayMinSeconds", "pkDelayMaxSeconds", "pkFriends", "pkStrangers", "pkCandidateScanLimit"];
+    if (this.scheduler && pkKeys.some(key => config[key] !== this.configValue[key])) {
+      this.scheduler.progress.clearBlock("pk");
     }
     this.saveConfig();
     this.updateStatus({
@@ -3195,4 +3546,4 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exitCode = 1;
   });
 }
-export { AutomationController, DEFAULT_CONFIG, OneBotHttpClient, ProgressStore, QQPetApi, QQPetPlugin, TaskFallbackError, buildCandidateList, compareEmployableFriends, compareRewardPerSecond, createApiToken, createWebServer, decideNextTask, estimateBestTaskRps, fatigueAction, hasFreeAvailableCourses, isAdventureWindowOpen, isFailureDiscouraged, isFallbackWorthy, isIrrecoverableSettleError, isWithinTimeWindow, normalizeConfig, orderCandidatesForSmart, parseDurationSeconds, parseFatigueStatus, parseRewardAmount, resolveStaticAssetPath, rotateSchoolAttribute, selectSchoolAttribute, selectSchoolOrWork, telemetryToOutdoorRecords, writeJsonAtomically };
+export { AutomationController, DEFAULT_CONFIG, OneBotHttpClient, ProgressStore, QQPetApi, QQPetError, QQPetPlugin, TaskFallbackError, buildCandidateList, compareEmployableFriends, compareRewardPerSecond, createApiToken, createWebServer, decideNextTask, estimateBestTaskRps, fatigueAction, hasFreeAvailableCourses, isAdventureWindowOpen, isFailureDiscouraged, isFallbackWorthy, isIrrecoverableSettleError, isRestPeriodActive, isWithinTimeWindow, normalizeConfig, orderCandidatesForSmart, parseDurationSeconds, parseFatigueStatus, parseRewardAmount, resolveStaticAssetPath, rotateSchoolAttribute, selectSchoolAttribute, selectSchoolOrWork, shouldPauseAdventureForNoMoneyBag, telemetryToOutdoorRecords, updateAdventureMoneyBagStreak, writeJsonAtomically };

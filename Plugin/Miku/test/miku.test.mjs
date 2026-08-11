@@ -10,6 +10,7 @@ import {
   DEFAULT_CONFIG,
   OneBotHttpClient,
   ProgressStore,
+  QQPetError,
   TaskFallbackError,
   buildCandidateList,
   compareRewardPerSecond,
@@ -22,6 +23,7 @@ import {
   isFailureDiscouraged,
   isFallbackWorthy,
   isIrrecoverableSettleError,
+  isRestPeriodActive,
   isWithinTimeWindow,
   normalizeConfig,
   orderCandidatesForSmart,
@@ -33,6 +35,7 @@ import {
   selectSchoolAttribute,
   selectSchoolOrWork,
   telemetryToOutdoorRecords,
+  updateAdventureMoneyBagStreak,
 } from '../index.mjs';
 import { accountKey, configuredAccounts } from '../multi.mjs';
 
@@ -63,6 +66,46 @@ describe('Miku configuration and persistence', () => {
     assert.equal(config.verifyDelaySeconds, 30);
     assert.equal(config.settleRetrySeconds, 1);
     assert.equal(config.startConfirmSeconds, 5);
+  });
+
+  test('migrates legacy visit minutes and normalizes new automation fields', () => {
+    const config = normalizeConfig({
+      visitDelayMinMinutes: 2,
+      visitDelayMaxMinutes: 5,
+      pkDelayMinSeconds: 90,
+      pkDelayMaxSeconds: 10,
+      pkCandidateScanLimit: 999,
+      adventureNoMoneyBagLimit: 0,
+    });
+    assert.equal(config.visitDelayMinSeconds, 120);
+    assert.equal(config.visitDelayMaxSeconds, 300);
+    assert.equal(config.pkDelayMaxSeconds, 90);
+    assert.equal(config.pkCandidateScanLimit, 100);
+    assert.equal(config.adventureNoMoneyBagLimit, 1);
+  });
+
+  test('detects normal, cross-midnight and all-day rest periods', () => {
+    const base = { ...DEFAULT_CONFIG, restPeriodEnabled: true };
+    assert.equal(isRestPeriodActive({ ...base, restStartTime: '01:00', restEndTime: '07:00' }, new Date('2026-08-11T03:00:00')), true);
+    assert.equal(isRestPeriodActive({ ...base, restStartTime: '22:00', restEndTime: '02:00' }, new Date('2026-08-11T23:00:00')), true);
+    assert.equal(isRestPeriodActive({ ...base, restStartTime: '22:00', restEndTime: '02:00' }, new Date('2026-08-11T12:00:00')), false);
+    assert.equal(isRestPeriodActive({ ...base, restStartTime: '00:00', restEndTime: '00:00' }, new Date('2026-08-11T12:00:00')), true);
+  });
+
+  test('tracks adventure money-bag streaks', () => {
+    assert.deepEqual(updateAdventureMoneyBagStreak(3, 100, 120, 5), { dropped: true, goldGain: 20, streak: 0, paused: false });
+    assert.deepEqual(updateAdventureMoneyBagStreak(4, 100, 100, 5), { dropped: false, goldGain: 0, streak: 5, paused: true });
+  });
+
+  test('quick adventure without a money bag does not create a pending task', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'miku-quick-adventure-'));
+    const store = new ProgressStore(path.join(directory, 'daily-progress.json'));
+    const controller = new AutomationController({ log: () => {}, updateStatus: () => {} }, store);
+    const started = await controller.startTaskByKind({
+      startAdventure: async () => { throw new QQPetError('no money bag', 'coin_bag_not_found'); },
+    }, { ...DEFAULT_CONFIG, quickAdventureEnabled: true }, {}, 'adventure');
+    assert.equal(started, false);
+    assert.equal(store.snapshot().pending, null);
   });
 
   test('backs up corrupted progress before resetting it', async () => {
